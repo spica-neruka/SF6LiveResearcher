@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#080b14" />
+  <meta name="description" content="SF6配信者を宇宙として眺めるライブ配信スケジュールMVP" />
+  <title>SF6 LIVE UNIVERSE</title>
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">STREET FIGHTER 6 · STREAM HUB</p>
+        <h1>SF6 <span>LIVE UNIVERSE</span></h1>
+      </div>
+      <div class="top-actions">
+        <button class="filter-btn active" data-filter="all">ALL</button>
+        <button class="filter-btn" data-filter="live">🔴 LIVE</button>
+        <button class="filter-btn" data-filter="upcoming">📅 UPCOMING</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="universe-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">COMMUNITY MAP</p>
+            <h2>SF6 COMMUNITY</h2>
+          </div>
+          <div class="legend">
+            <span><i class="dot live"></i> LIVE</span>
+            <span><i class="dot scheduled"></i> SCHEDULED</span>
+          </div>
+        </div>
+        <p class="section-note">キャラクターは惑星、配信者は衛星。惑星の大きさはコミュニティ人口、衛星の大きさはYouTube登録者規模を表します。</p>
+        <div id="planet-map" class="planet-map" aria-label="SF6 character community map"></div>
+      </section>
+
+      <section class="schedule-section">
+        <div class="section-heading schedule-heading">
+          <div>
+            <p class="eyebrow">TODAY'S SCHEDULE</p>
+            <h2 id="schedule-title">TODAY · 2026/08/21</h2>
+          </div>
+          <div class="schedule-actions">
+            <button id="reset-filter" class="ghost-btn">全配信を表示</button>
+          </div>
+        </div>
+        <div id="schedule" class="schedule" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <aside id="detail-panel" class="detail-panel" aria-hidden="true">
+      <button id="close-panel" class="close-btn" aria-label="閉じる">×</button>
+      <div id="detail-content"></div>
+    </aside>
+    <div id="overlay" class="overlay"></div>
+
+    <footer>
+      <span>SF6 LIVE UNIVERSE · MVP</span>
+      <span>Demo data · YouTube API接続前</span>
+    </footer>
+  </div>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
