@@ -3,65 +3,46 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#080b14" />
-  <meta name="description" content="SF6配信者を宇宙として眺めるライブ配信スケジュールMVP" />
-  <title>SF6 LIVE UNIVERSE</title>
+  <meta name="theme-color" content="#090b10" />
+  <meta name="description" content="SF6配信スケジュールを今日と明日だけ見つけるSF6 LIVEプロトタイプ" />
+  <title>SF6 LIVE — Street Fighter 6 Stream Schedule</title>
   <link rel="stylesheet" href="./css/style.css" />
 </head>
 <body>
   <div class="app-shell">
-    <header class="topbar">
-      <div>
-        <p class="eyebrow">STREET FIGHTER 6 · STREAM HUB</p>
-        <h1>SF6 <span>LIVE UNIVERSE</span></h1>
+    <aside class="sidebar" aria-label="メインナビゲーション">
+      <div class="brand">
+        <div class="brand-mark">SF</div>
+        <div><strong>SF6 LIVE</strong><span>STREAM SCHEDULE</span></div>
       </div>
-      <div class="top-actions">
-        <button class="filter-btn active" data-filter="all">ALL</button>
-        <button class="filter-btn" data-filter="live">🔴 LIVE</button>
-        <button class="filter-btn" data-filter="upcoming">📅 UPCOMING</button>
-      </div>
-    </header>
-
-    <main>
-      <section class="universe-section">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">COMMUNITY MAP</p>
-            <h2>SF6 COMMUNITY</h2>
-          </div>
-          <div class="legend">
-            <span><i class="dot live"></i> LIVE</span>
-            <span><i class="dot scheduled"></i> SCHEDULED</span>
-          </div>
-        </div>
-        <p class="section-note">キャラクターは惑星、配信者は衛星。惑星の大きさはコミュニティ人口、衛星の大きさはYouTube登録者規模を表します。</p>
-        <div id="planet-map" class="planet-map" aria-label="SF6 character community map"></div>
-      </section>
-
-      <section class="schedule-section">
-        <div class="section-heading schedule-heading">
-          <div>
-            <p class="eyebrow">TODAY'S SCHEDULE</p>
-            <h2 id="schedule-title">TODAY · 2026/08/21</h2>
-          </div>
-          <div class="schedule-actions">
-            <button id="reset-filter" class="ghost-btn">全配信を表示</button>
-          </div>
-        </div>
-        <div id="schedule" class="schedule" aria-live="polite"></div>
-      </section>
-    </main>
-
-    <aside id="detail-panel" class="detail-panel" aria-hidden="true">
-      <button id="close-panel" class="close-btn" aria-label="閉じる">×</button>
-      <div id="detail-content"></div>
+      <nav>
+        <button class="nav-item active" data-view="home"><span>⌂</span>ホーム</button>
+        <button class="nav-item" data-view="schedule"><span>▣</span>スケジュール</button>
+        <button class="nav-item" data-view="streamers"><span>♙</span>配信者</button>
+        <button class="nav-item" data-view="characters"><span>◉</span>キャラクター</button>
+        <button class="nav-item" data-view="favorites"><span>♡</span>お気に入り</button>
+        <button class="nav-item" data-view="notice"><span>♧</span>お知らせ</button>
+        <button class="nav-item" data-view="settings"><span>⚙</span>設定</button>
+        <button class="nav-item" data-view="help"><span>?</span>使い方</button>
+      </nav>
+      <div class="sidebar-note">ログイン不要<br><span>お気に入りはこのブラウザに保存</span></div>
+      <div class="socials"><span>YT</span><span>TW</span><span>X</span></div>
     </aside>
-    <div id="overlay" class="overlay"></div>
 
-    <footer>
-      <span>SF6 LIVE UNIVERSE · MVP</span>
-      <span>Demo data · YouTube API接続前</span>
-    </footer>
+    <main class="main-content">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">STREET FIGHTER 6 · STREAM HUB</p>
+          <h1 id="page-title">ホーム</h1>
+        </div>
+        <div class="top-actions">
+          <div class="timezone">◷ JST</div>
+          <label class="search"><span>⌕</span><input id="search-input" type="search" placeholder="配信者やキャラを検索" /></label>
+        </div>
+      </header>
+
+      <div id="app" aria-live="polite"></div>
+    </main>
   </div>
   <script type="module" src="./js/app.js"></script>
 </body>
