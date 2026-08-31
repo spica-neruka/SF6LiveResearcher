@@ -1,89 +1,38 @@
-const state = { data: null, filter: 'all' };
-const $ = (selector) => document.querySelector(selector);
-const escapeHtml = (value) => String(value).replace(/[&<>\"]/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '\"':'&quot;' }[c]));
-
-function getCharacter(id) { return state.data.characters.find((character) => character.id === id); }
-function bubbleTier(population) {
-  if (population >= 30) return 'giant';
-  if (population >= 15) return 'large';
-  if (population >= 7) return 'medium';
-  if (population >= 3) return 'small';
-  return 'tiny';
+const state = { data: null, view: 'home', day: 'today', query: '', charFilter: 'all', favorites: JSON.parse(localStorage.getItem('sf6-live-favorites') || '[]') };
+const $ = (s) => document.querySelector(s);
+const escapeHtml = (v) => String(v).replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));
+const chars = () => state.data.characters;
+const char = id => chars().find(c => c.id === id);
+const streams = () => state.data.streams;
+const isFav = id => state.favorites.includes(id);
+function saveFavs(){ localStorage.setItem('sf6-live-favorites', JSON.stringify(state.favorites)); }
+function toggleFav(id){ state.favorites = isFav(id) ? state.favorites.filter(x=>x!==id) : [...state.favorites,id]; saveFavs(); render(); }
+function filteredStreams({day=state.day, onlyFav=false}={}){
+  return streams().filter(s => (day === 'today' ? s.day !== 'tomorrow' : s.day === 'tomorrow') && (!onlyFav || isFav(s.streamerId)) && (state.charFilter === 'all' || s.characterId === state.charFilter) && (!state.query || `${s.streamer} ${s.title} ${char(s.characterId)?.name}`.toLowerCase().includes(state.query.toLowerCase())));
 }
-function satelliteSize(subscribers) { return Math.max(7, Math.min(18, 5 + Math.log10(Math.max(10000, subscribers)) * 1.55)); }
-function visibleStreams() {
-  return state.data.streams.filter((stream) => state.filter === 'all' || (state.filter === 'live' ? stream.status === 'live' : stream.status === 'scheduled'));
-}
-
-function renderMap() {
-  const map = $('#planet-map');
-  const streams = visibleStreams();
-  const characters = state.data.characters;
-  const cols = 6;
-  const positions = characters.map((_, index) => {
-    const row = Math.floor(index / cols);
-    const col = index % cols;
-    return { x: 9 + col * 16.3 + (row % 2 ? 7 : 0), y: 12 + row * 18.5 };
-  });
-
-  map.innerHTML = `
-    <div class="vita-home-hint"><span>SF6 CHARACTER UNIVERSE</span><small>惑星を選択してコミュニティへ</small></div>
-    ${characters.map((character, index) => {
-      const allCharacterStreams = state.data.streams.filter((stream) => stream.characterId === character.id);
-      const currentStreams = streams.filter((stream) => stream.characterId === character.id).slice(0, 5);
-      const liveCount = allCharacterStreams.filter((stream) => stream.status === 'live').length;
-      const upcomingCount = allCharacterStreams.filter((stream) => stream.status === 'scheduled').length;
-      const tier = bubbleTier(character.population);
-      const size = { giant: 158, large: 132, medium: 108, small: 88, tiny: 70 }[tier];
-      const { x, y } = positions[index];
-      const satellites = currentStreams.map((stream, satelliteIndex) => {
-        const angle = -90 + (360 / Math.max(1, currentStreams.length)) * satelliteIndex;
-        const radius = size * 0.62;
-        const rad = angle * Math.PI / 180;
-        const satSize = satelliteSize(stream.subscribers);
-        const sx = Math.cos(rad) * radius;
-        const sy = Math.sin(rad) * radius;
-        return `<button class="satellite ${stream.status}" title="${escapeHtml(stream.streamer)} · ${stream.subscribers.toLocaleString()} subscribers" data-stream-id="${stream.id}" style="width:${satSize}px;height:${satSize}px;left:calc(50% + ${sx}px - ${satSize / 2}px);top:calc(50% + ${sy}px - ${satSize / 2}px)"></button>`;
-      }).join('');
-      return `<button class="character-planet ${tier} ${liveCount ? 'has-live' : ''}" data-character-id="${character.id}" style="--x:${x}%;--y:${y}%;--planet-size:${size}px;--planet-index:${index}">
-        <span class="planet-orbit"></span>
-        ${satellites}
-        <span class="planet-surface">
-          <span class="portrait-placeholder">${escapeHtml(character.name)}</span>
-          <span class="planet-light"></span>
-          <span class="planet-shadow"></span>
-        </span>
-        <span class="planet-caption"><strong>${escapeHtml(character.name)}</strong><small>${character.population} streamers${liveCount ? ` · 🔴 ${liveCount}` : upcomingCount ? ` · ◷ ${upcomingCount}` : ''}</small></span>
-      </button>`;
-    }).join('')}`;
-
-  map.querySelectorAll('.character-planet').forEach((node) => node.addEventListener('click', (event) => {
-    const satellite = event.target.closest('.satellite');
-    if (satellite) { event.stopPropagation(); openStream(satellite.dataset.streamId); return; }
-    openCharacter(node.dataset.characterId);
-  }));
-}
-
-function renderSchedule() {
-  const schedule = $('#schedule');
-  const streams = visibleStreams().sort((a, b) => a.start.localeCompare(b.start));
+function nav(view){ state.view=view; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active', n.dataset.view===view)); render(); }
+function goSchedule(day){ state.view='schedule'; state.day=day; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view==='schedule')); render(); }
+function scheduleRows(items){
   const grouped = new Map();
-  streams.forEach((stream) => { if (!grouped.has(stream.start)) grouped.set(stream.start, []); grouped.get(stream.start).push(stream); });
-  if (!grouped.size) { schedule.innerHTML = '<div style="padding:30px;color:#8d96aa">該当する配信はありません。</div>'; return; }
-  schedule.innerHTML = [...grouped.entries()].map(([time, items]) => `<div class="time-row"><div class="time">${escapeHtml(time)}</div><div class="streams">${items.map((stream) => { const character = getCharacter(stream.characterId); const status = stream.status === 'live' ? `🔴 LIVE · ${stream.viewers.toLocaleString()} viewers` : '📅 UPCOMING'; return `<article class="stream-card ${stream.status}" data-stream-id="${stream.id}"><div class="stream-main"><span class="streamer">${escapeHtml(stream.streamer)}</span><span class="status ${stream.status}">${status}</span></div><div class="stream-title">${escapeHtml(stream.title)}</div><div class="stats"><span>◉ ${escapeHtml(character.name)}</span><span>👥 ${stream.subscribers.toLocaleString()}</span></div></article>`; }).join('')}</div></div>`).join('');
-  schedule.querySelectorAll('.stream-card').forEach((card) => card.addEventListener('click', () => openStream(card.dataset.streamId)));
+  [...items].sort((a,b)=>a.start.localeCompare(b.start)).forEach(s=>{ if(!grouped.has(s.start)) grouped.set(s.start,[]); grouped.get(s.start).push(s); });
+  if(!grouped.size) return '<div class="empty">該当する配信予定はありません。</div>';
+  return [...grouped.entries()].map(([time,list])=>`<div class="time-row"><div class="time">${time}</div><div class="stream-list">${list.map(scheduleCard).join('')}</div></div>`).join('');
 }
-
-function openCharacter(characterId) {
-  const character = getCharacter(characterId); if (!character) return;
-  const streams = state.data.streams.filter((stream) => stream.characterId === characterId);
-  $('#detail-content').innerHTML = `<div class="detail-hero"><div class="detail-planet ${bubbleTier(character.population)}"><span class="detail-planet-name">${escapeHtml(character.name)}</span><span class="planet-light"></span><span class="planet-shadow"></span></div><p class="eyebrow">COMMUNITY LIVEAREA</p><h3>${escapeHtml(character.name)}</h3><p class="section-note">この惑星を拠点にする配信コミュニティ</p><div class="detail-stats"><div class="detail-stat"><strong>${character.population}</strong><span>配信者</span></div><div class="detail-stat"><strong>${streams.filter((s) => s.status === 'live').length}</strong><span>LIVE</span></div><div class="detail-stat"><strong>${streams.reduce((sum, s) => sum + (s.viewers || 0), 0).toLocaleString()}</strong><span>LIVE同接</span></div></div><div>${streams.map(streamRow).join('') || '<p class="section-note">現在表示できる配信はありません。</p>'}</div></div>`;
-  openPanel();
+function scheduleCard(s){ const c=char(s.characterId); return `<article class="schedule-card" data-open="${s.id}"><div class="avatar">${escapeHtml(c.name.slice(0,2))}</div><div class="schedule-info"><strong>${escapeHtml(s.streamer)}</strong><span>${escapeHtml(c.name)} · ${escapeHtml(s.title)}</span></div><div class="platform">${s.platform}</div></article>`; }
+function liveCard(s){ const c=char(s.characterId); return `<article class="stream-card" data-open="${s.id}"><div class="thumb" style="background:linear-gradient(135deg,${c.color || '#343b47'},#11151b)"><span class="live-pill">● LIVE</span><span class="thumb-title">${escapeHtml(c.name)}</span><span class="char-badge">${escapeHtml(s.title)}</span></div><div class="card-body"><div class="streamer-row"><span class="streamer-name">${escapeHtml(s.streamer)}</span><button class="favorite ${isFav(s.streamerId)?'on':''}" data-fav="${s.streamerId}" aria-label="お気に入り">${isFav(s.streamerId)?'♥':'♡'}</button></div><div class="meta"><span>◉ ${escapeHtml(c.name)}</span><span>👁 ${s.viewers.toLocaleString()}</span><span>${s.platform}</span></div></div></article>`; }
+function home(){
+  const live=filteredStreams().filter(s=>s.status==='live'); const today=filteredStreams({day:'today'}); const tomorrow=filteredStreams({day:'tomorrow'});
+  return `<section class="section"><div class="section-head"><div><h2>🔴 NOW LIVE</h2><p>いま見られるスト6配信</p></div><button class="section-link" data-go="schedule">すべて見る →</button></div><div class="live-grid">${live.length?live.map(liveCard).join(''):'<div class="empty">現在LIVE中の配信はありません。</div>'}</div></section>
+  <section class="section"><div class="section-head"><div><h2>TODAY · 8/31</h2><p>今日の配信予定。終了時刻は表示しません。</p></div><button class="section-link" data-day="today">フルスケジュール →</button></div><div class="schedule-shell"><div class="schedule-tabs"><button class="tab active">TODAY</button><button class="tab" data-day="tomorrow">TOMORROW</button></div>${scheduleRows(today)}</div></section>
+  <section class="section"><div class="section-head"><div><h2>TOMORROW · 9/1</h2><p>翌日まで確認できます。</p></div><button class="section-link" data-day="tomorrow">見る →</button></div><div class="schedule-shell tomorrow">${scheduleRows(tomorrow)}</div></section>`;
 }
-function streamRow(stream) { const status = stream.status === 'live' ? `🔴 LIVE · ${stream.viewers.toLocaleString()} viewers` : `📅 ${stream.start}`; return `<div class="detail-stream"><a href="${stream.youtubeUrl}" target="_blank" rel="noopener noreferrer"><div class="name">${escapeHtml(stream.streamer)} · ${stream.subscribers.toLocaleString()} subscribers</div><div class="small">${status} · ${escapeHtml(stream.title)}</div></a></div>`; }
-function openStream(streamId) { const stream = state.data.streams.find((item) => item.id === streamId); if (!stream) return; const character = getCharacter(stream.characterId); $('#detail-content').innerHTML = `<div class="detail-hero"><div class="detail-planet small"><span class="detail-planet-name">${escapeHtml(character.name)}</span></div><p class="eyebrow">${stream.status === 'live' ? '🔴 NOW LIVE' : 'UPCOMING STREAM'}</p><h3>${escapeHtml(stream.streamer)}</h3><p class="section-note">${escapeHtml(stream.title)}</p><div class="detail-stats"><div class="detail-stat"><strong>${escapeHtml(character.name)}</strong><span>CHARACTER</span></div><div class="detail-stat"><strong>${stream.subscribers.toLocaleString()}</strong><span>SUBSCRIBERS</span></div><div class="detail-stat"><strong>${stream.status === 'live' ? stream.viewers.toLocaleString() : stream.start}</strong><span>${stream.status === 'live' ? 'VIEWERS' : 'START'}</span></div></div><a class="filter-btn active" style="display:inline-block;text-decoration:none" href="${stream.youtubeUrl}" target="_blank" rel="noopener noreferrer">YouTubeで見る ↗</a></div>`; openPanel(); }
-function openPanel() { $('#detail-panel').classList.add('open'); $('#overlay').classList.add('open'); $('#detail-panel').setAttribute('aria-hidden', 'false'); }
-function closePanel() { $('#detail-panel').classList.remove('open'); $('#overlay').classList.remove('open'); $('#detail-panel').setAttribute('aria-hidden', 'true'); }
-function setFilter(filter) { state.filter = filter; document.querySelectorAll('.filter-btn[data-filter]').forEach((button) => button.classList.toggle('active', button.dataset.filter === filter)); renderMap(); renderSchedule(); }
-async function init() { const response = await fetch('./data/streams.json'); state.data = await response.json(); renderMap(); renderSchedule(); document.querySelectorAll('.filter-btn[data-filter]').forEach((button) => button.addEventListener('click', () => setFilter(button.dataset.filter))); $('#reset-filter').addEventListener('click', () => setFilter('all')); $('#close-panel').addEventListener('click', closePanel); $('#overlay').addEventListener('click', closePanel); document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closePanel(); }); }
-init().catch((error) => { console.error(error); $('#schedule').innerHTML = '<div style="padding:30px;color:#ff8b99">データの読み込みに失敗しました。</div>'; });
+function schedulePage(){ const items=filteredStreams({day:state.day}); return `<section class="section"><div class="section-head"><div><h2>${state.day==='today'?'TODAY · 8/31':'TOMORROW · 9/1'}</h2><p>開始時刻だけを表示するシンプルな配信スケジュール</p></div></div><div class="filter-row">${['all',...chars().slice(0,12).map(c=>c.id)].map(id=>{const c=id==='all'?null:char(id);return `<button class="chip ${state.charFilter===id?'active':''}" data-char="${id}">${c?c.name:'すべて'}</button>`}).join('')}</div><div class="schedule-shell"><div class="schedule-tabs"><button class="tab ${state.day==='today'?'active':''}" data-day="today">今日</button><button class="tab ${state.day==='tomorrow'?'active':''}" data-day="tomorrow">明日</button></div>${scheduleRows(items)}</div></section>`; }
+function streamersPage(){ const names=[...new Map(streams().map(s=>[s.streamerId,{id:s.streamerId,name:s.streamer,characterId:s.characterId,subscribers:s.subscribers}])).values()]; return `<section class="section"><div class="section-head"><div><h2>配信者</h2><p>気になる配信者をお気に入りに追加できます。</p></div></div><div class="streamer-grid">${names.map(x=>`<article class="streamer-card"><div class="character-art" style="background:linear-gradient(145deg,${char(x.characterId).color},#11151b)">${escapeHtml(char(x.characterId).name)}</div><div class="streamer-row"><strong>${escapeHtml(x.name)}</strong><button class="favorite ${isFav(x.id)?'on':''}" data-fav="${x.id}">${isFav(x.id)?'♥':'♡'}</button></div><small>登録者 ${x.subscribers.toLocaleString()} · ${char(x.characterId).name}</small></article>`).join('')}</div></section>`; }
+function charactersPage(){ return `<section class="section"><div class="section-head"><div><h2>キャラクター</h2><p>キャラクターから配信を探す。</p></div></div><div class="character-grid">${chars().map(c=>`<article class="character-card" data-char="${c.id}"><div class="character-art" style="background:linear-gradient(145deg,${c.color},#11151b)">${escapeHtml(c.name)}</div><strong>${escapeHtml(c.name)}</strong><small>${streams().filter(s=>s.characterId===c.id).length} streams</small></article>`).join('')}</div></section>`; }
+function favoritesPage(){ const fav=filteredStreams({onlyFav:true}); return `<section class="section"><div class="section-head"><div><h2>お気に入り</h2><p>このブラウザだけに保存されます。アカウントは不要です。</p></div></div>${fav.length?`<div class="schedule-shell"><div class="schedule-tabs"><button class="tab active">TODAY</button><button class="tab" data-day="tomorrow">TOMORROW</button></div>${scheduleRows(fav)}</div>`:'<div class="empty">お気に入りの配信予定はありません。配信者一覧から ♡ を押して追加できます。</div>'}</section>`; }
+function simplePage(title,body){ return `<section class="section"><div class="page-card"><h2>${title}</h2>${body}</div></section>`; }
+function render(){ const app=$('#app'); const titles={home:'ホーム',schedule:'スケジュール',streamers:'配信者',characters:'キャラクター',favorites:'お気に入り',notice:'お知らせ',settings:'設定',help:'使い方'}; $('#page-title').textContent=titles[state.view]; if(state.view==='home') app.innerHTML=home(); else if(state.view==='schedule') app.innerHTML=schedulePage(); else if(state.view==='streamers') app.innerHTML=streamersPage(); else if(state.view==='characters') app.innerHTML=charactersPage(); else if(state.view==='favorites') app.innerHTML=favoritesPage(); else if(state.view==='notice') app.innerHTML=simplePage('お知らせ','<div class="notice">SF6 LIVE prototype を公開しました。<span>2026/08/31</span></div><div class="notice">ログイン不要・ブラウザ保存方式でお気に入りを管理します。<span>2026/08/31</span></div>'); else if(state.view==='settings') app.innerHTML=simplePage('設定','<p>現在のタイムゾーン：<strong>JST</strong></p><p>お気に入りは localStorage に保存されています。別のブラウザや端末とは同期されません。</p><button class="chip" id="clear-favs">お気に入りをすべて削除</button>'); else app.innerHTML=simplePage('使い方','<p><strong>NOW LIVE</strong> から今すぐ見られる配信を探せます。</p><p><strong>TODAY / TOMORROW</strong> は開始時刻だけを表示します。配信終了時刻は設定しません。</p><p>♡ を押した配信者はこのブラウザのお気に入りに保存されます。ログインは不要です。</p>'); bind(); }
+function bind(){ document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>nav(b.dataset.go)); document.querySelectorAll('[data-day]').forEach(b=>b.onclick=()=>goSchedule(b.dataset.day)); document.querySelectorAll('[data-char]').forEach(b=>b.onclick=()=>{ if(state.view==='characters'){state.charFilter=b.dataset.char; state.view='schedule';} else state.charFilter=b.dataset.char; render(); }); document.querySelectorAll('[data-fav]').forEach(b=>b.onclick=e=>{e.stopPropagation();toggleFav(b.dataset.fav)}); document.querySelectorAll('[data-open]').forEach(card=>card.onclick=()=>openStream(card.dataset.open)); const clear=$('#clear-favs'); if(clear) clear.onclick=()=>{state.favorites=[];saveFavs();render();}; }
+function openStream(id){ const s=streams().find(x=>x.id===id); if(!s)return; const c=char(s.characterId); const box=document.createElement('div'); box.className='toast'; box.textContent=`${s.streamer} · ${c.name} の配信を開きます`; document.body.appendChild(box); setTimeout(()=>box.remove(),1200); window.open(s.youtubeUrl,'_blank','noopener'); }
+document.querySelectorAll('.nav-item').forEach(n=>n.onclick=()=>nav(n.dataset.view)); $('#search-input').addEventListener('input',e=>{state.query=e.target.value;render();});
+fetch('./data/streams.json').then(r=>r.json()).then(data=>{state.data=data;render();}).catch(()=>$('#app').innerHTML='<div class="empty">データの読み込みに失敗しました。</div>');
