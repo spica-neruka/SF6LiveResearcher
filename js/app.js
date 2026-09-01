@@ -5,7 +5,7 @@ const CHARACTER_ROSTER = [
   ['リュウ','ryu'],['ルーク','luke'],['ジェイミー','jamie'],['春麗','chunli'],['ガイル','guile'],
   ['キンバリー','kimberly'],['ジュリ','juri'],['ケン','ken'],['ブランカ','blanka'],['ダルシム','dhalsim'],
   ['エドモンド本田','honda'],['ザンギエフ','zangief'],['キャミィ','cammy'],['マノン','manon'],['マリーザ','marisa'],
-  ['リリー','lily'],['JP','jp'],['ディージェイ','deejay'],['ラシード','rashid'],['A.K.I.','aki'],['エド','ed'],
+  ['リリー','lily'],['JP','jp'],['ディージェイ','deejay'],['ラシード','rashid'],['A.K.I.','aki'],['ED','ed'],
   ['豪鬼','gouki'],['テリー','terry'],['不知火舞','mai'],['ベガ','vega'],['エレナ','elena'],['サガット','sagat'],
   ['C.ヴァイパー','cviper'],['アレックス','alex'],['イングリッド','ingrid'],['ヤスミン','yasmine']
 ].map(([name, slug]) => ({
