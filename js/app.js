@@ -46,6 +46,19 @@ function formatTime(value, fallback='--:--'){ const d=new Date(value); if(Number
 function getCharacterImage(names){ const c=names.map(charByName).find(Boolean); return c?.image || ''; }
 function charImageStyle(names){ const image=getCharacterImage(names); return image ? `background-image:linear-gradient(180deg,rgba(8,10,15,.05),rgba(8,10,15,.86)),url('${image}')` : ''; }
 
+// YouTube channel icon: resolve it in the browser from channel_id only.
+// This keeps channel thumbnail URLs out of D1 and the Worker API.
+function channelIconUrl(channelId){
+  if(!channelId) return '';
+  return `https://unavatar.io/youtube/${encodeURIComponent(channelId)}`;
+}
+function channelIconHtml(channelId,name){
+  const icon=channelIconUrl(channelId);
+  return icon
+    ? `<img class="channel-icon" src="${escapeHtml(icon)}" alt="${escapeHtml(name)} のYouTubeチャンネルアイコン" loading="lazy" referrerpolicy="no-referrer">`
+    : `<div class="channel-icon channel-icon-placeholder" aria-hidden="true">▶</div>`;
+}
+
 function liveCard(s){
   const names=s.characterNames.join(' / ');
   return `<article class="stream-card" data-open="${s.id}"><div class="thumb" style="background-image:linear-gradient(135deg,rgba(20,24,31,.25),rgba(17,21,27,.72)),url('${escapeHtml(s.thumbnail)}');background-size:cover;background-position:center"><span class="live-pill">● LIVE</span><span class="char-badge">${escapeHtml(names)}</span></div><div class="card-body"><div class="streamer-row"><span class="streamer-name">${escapeHtml(s.streamer)}</span><button class="favorite ${isFav(s.streamerId)?'on':''}" data-fav="${s.streamerId}" aria-label="お気に入り">${isFav(s.streamerId)?'♥':'♡'}</button></div><div class="meta"><span>◉ ${escapeHtml(names)}</span>${s.viewers != null ? `<span>👁 ${Number(s.viewers).toLocaleString()}</span>` : ''}</div></div></article>`;
@@ -68,7 +81,7 @@ function upcomingPage(){
 }
 function streamersPage(){
   const names=[...new Map([...streams(),...state.data.upcoming].map(s=>[s.streamerId,{id:s.streamerId,name:s.streamer,characterNames:s.characterNames,lp:s.lp,mr:s.mr}])).values()];
-  return `<section class="section"><div class="section-head"><div><h2>配信者</h2><p>Cloudflare D1に登録されている配信者情報</p></div></div><div class="streamer-grid">${names.map(x=>`<article class="streamer-card"><div class="character-art" style="${charImageStyle(x.characterNames)}">${x.characterNames.length?escapeHtml(x.characterNames.join(' / ')):'SF6'}</div><div class="streamer-row"><strong>${escapeHtml(x.name)}</strong><button class="favorite ${isFav(x.id)?'on':''}" data-fav="${x.id}">${isFav(x.id)?'♥':'♡'}</button></div><small>${x.lp != null ? `LP ${escapeHtml(x.lp)}` : ''}${x.mr != null ? ` · MR ${escapeHtml(x.mr)}` : ''}</small></article>`).join('')}</div></section>`;
+  return `<section class="section"><div class="section-head"><div><h2>配信者</h2><p>Cloudflare D1に登録されている配信者情報</p></div></div><div class="streamer-grid">${names.map(x=>`<article class="streamer-card"><div class="character-art channel-art">${channelIconHtml(x.id,x.name)}</div><div class="streamer-row"><strong>${escapeHtml(x.name)}</strong><button class="favorite ${isFav(x.id)?'on':''}" data-fav="${x.id}">${isFav(x.id)?'♥':'♡'}</button></div><small>${x.lp != null ? `LP ${escapeHtml(x.lp)}` : ''}${x.mr != null ? ` · MR ${escapeHtml(x.mr)}` : ''}</small></article>`).join('')}</div></section>`;
 }
 function charactersPage(){
   return `<section class="section"><div class="section-head"><div><h2>キャラクター</h2><p>現在実装されているファイターの公式アート</p></div></div><div class="character-grid">${chars().map(c=>{const count=[...streams(),...state.data.upcoming].filter(s=>s.characterNames.some(n=>characterSlug(n)===c.id)).length;return `<article class="character-card" data-character="${c.id}"><div class="character-art image-art" style="background-image:linear-gradient(180deg,rgba(8,10,15,.02),rgba(8,10,15,.84)),url('${c.image}')"></div><strong>${escapeHtml(c.name)}</strong><small>${count} streams</small></article>`}).join('')}</div></section>`;
