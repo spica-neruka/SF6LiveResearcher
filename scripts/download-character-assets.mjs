@@ -13,7 +13,8 @@ const characters = [
   ['rashid','character_rashid_l.png'], ['aki','character_aki_l.png'], ['ed','character_ed_l.png'],
   ['gouki','character_gouki_l.png'], ['terry','character_terry_l.png'], ['mai','character_mai_l.png'],
   ['vega','character_vega_l.png'], ['elena','character_elena_l.png'], ['sagat','character_sagat_l.png'],
-  ['viper','character_viper_l.png'], ['alex','character_alex_l.png'], ['ingrid','character_ingrid_l.png'],
+  ['cviper','character_cviper_l.png'], ['alex','character_alex_l.png'], ['ingrid','character_ingrid_l.png'],
+  ['yasmine','character_yasmine_l.png'],
 ];
 
 const base = 'https://www.streetfighter.com/6/buckler/assets/images/material/character/';
