@@ -64,14 +64,14 @@ function home(){
 }
 function upcomingPage(){
   const items=filteredUpcoming();
-  return `<section class="section"><div class="section-head"><div><h2>配信予定</h2><p>YouTubeで公開予定になっているSF6 LIVE</p></div><span class="result-count">${items.length} streams</span></div><div class="filter-row"><button class="chip ${state.charFilter==='all'?'active':''}" data-char="all">すべて</button>${chars().map(c=>`<button class="chip ${state.charFilter===c.id?'active':''}" data-char="${c.id}">${escapeHtml(c.name)}</button>`).join('')}</div><div class="upcoming-grid">${items.length?items.map(upcomingCard).join(''):'<div class="empty">該当する配信予定はありません。</div>'}</div></section>`;
+  return `<section class="section"><div class="section-head"><div><h2>配信予定</h2><p>YouTubeで公開予定になっているSF6 LIVE</p></div><span class="result-count">${items.length} streams</span></div><div class="filter-row"><button class="chip ${state.charFilter==='all'?'active':''}" data-upcoming-char="all">すべて</button>${chars().map(c=>`<button class="chip ${state.charFilter===c.id?'active':''}" data-upcoming-char="${c.id}">${escapeHtml(c.name)}</button>`).join('')}</div><div class="upcoming-grid">${items.length?items.map(upcomingCard).join(''):'<div class="empty">該当する配信予定はありません。</div>'}</div></section>`;
 }
 function streamersPage(){
   const names=[...new Map([...streams(),...state.data.upcoming].map(s=>[s.streamerId,{id:s.streamerId,name:s.streamer,characterNames:s.characterNames,lp:s.lp,mr:s.mr}])).values()];
   return `<section class="section"><div class="section-head"><div><h2>配信者</h2><p>Cloudflare D1に登録されている配信者情報</p></div></div><div class="streamer-grid">${names.map(x=>`<article class="streamer-card"><div class="character-art" style="${charImageStyle(x.characterNames)}">${x.characterNames.length?escapeHtml(x.characterNames.join(' / ')):'SF6'}</div><div class="streamer-row"><strong>${escapeHtml(x.name)}</strong><button class="favorite ${isFav(x.id)?'on':''}" data-fav="${x.id}">${isFav(x.id)?'♥':'♡'}</button></div><small>${x.lp != null ? `LP ${escapeHtml(x.lp)}` : ''}${x.mr != null ? ` · MR ${escapeHtml(x.mr)}` : ''}</small></article>`).join('')}</div></section>`;
 }
 function charactersPage(){
-  return `<section class="section"><div class="section-head"><div><h2>キャラクター</h2><p>現在実装されているファイターの公式アート</p></div></div><div class="character-grid">${chars().map(c=>{const count=[...streams(),...state.data.upcoming].filter(s=>s.characterNames.some(n=>characterSlug(n)===c.id)).length;return `<article class="character-card" data-char="${c.id}"><div class="character-art image-art" style="background-image:linear-gradient(180deg,rgba(8,10,15,.02),rgba(8,10,15,.84)),url('${c.image}')"></div><strong>${escapeHtml(c.name)}</strong><small>${count} streams</small></article>`}).join('')}</div></section>`;
+  return `<section class="section"><div class="section-head"><div><h2>キャラクター</h2><p>現在実装されているファイターの公式アート</p></div></div><div class="character-grid">${chars().map(c=>{const count=[...streams(),...state.data.upcoming].filter(s=>s.characterNames.some(n=>characterSlug(n)===c.id)).length;return `<article class="character-card" data-character="${c.id}"><div class="character-art image-art" style="background-image:linear-gradient(180deg,rgba(8,10,15,.02),rgba(8,10,15,.84)),url('${c.image}')"></div><strong>${escapeHtml(c.name)}</strong><small>${count} streams</small></article>`}).join('')}</div></section>`;
 }
 function favoritesPage(){
   const fav=[...streams(),...state.data.upcoming].filter(s=>isFav(s.streamerId));
@@ -94,12 +94,12 @@ function render(){
 }
 function bind(){
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>nav(b.dataset.go));
-  document.querySelectorAll('[data-char]').forEach(b=>b.onclick=()=>{state.charFilter=b.dataset.char; state.view='upcoming'; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view==='upcoming')); render();});
+  document.querySelectorAll('[data-upcoming-char]').forEach(b=>b.onclick=()=>{state.charFilter=b.dataset.upcomingChar; state.view='upcoming'; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view==='upcoming')); render();});
   document.querySelectorAll('[data-clear-char]').forEach(b=>b.onclick=()=>{state.charFilter='all'; state.view='home'; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view==='home')); render();});
   document.querySelectorAll('[data-fav]').forEach(b=>b.onclick=e=>{e.stopPropagation();toggleFav(b.dataset.fav)});
   document.querySelectorAll('[data-open]').forEach(card=>card.onclick=()=>openStream(card.dataset.open));
   const clear=$('#clear-favs'); if(clear) clear.onclick=()=>{state.favorites=[];saveFavs();render();};
-  document.querySelectorAll('.character-card').forEach(card=>card.onclick=()=>{state.charFilter=card.dataset.char; state.view='home'; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view==='home')); render();});
+  document.querySelectorAll('.character-card').forEach(card=>card.onclick=()=>{state.charFilter=card.dataset.character; state.view='home'; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view==='home')); render();});
 }
 function openStream(id){ const all=[...streams(),...state.data.upcoming]; const s=all.find(x=>x.id===id); if(s) window.open(s.youtubeUrl,'_blank','noopener'); }
 function mapVideo(v){
