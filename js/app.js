@@ -1,13 +1,18 @@
 const API_BASE = window.SF6_API_BASE || 'https://sf6-live-researcher.u-ambers.workers.dev';
 
+// Official SF6 character asset slugs used by the local assets downloaded by GitHub Actions.
 const CHARACTER_ROSTER = [
-  ['リュウ','ryu'],['ルーク','luke'],['ジェイミー','jamie'],['春麗','chun-li'],['ガイル','guile'],
+  ['リュウ','ryu'],['ルーク','luke'],['ジェイミー','jamie'],['春麗','chunli'],['ガイル','guile'],
   ['キンバリー','kimberly'],['ジュリ','juri'],['ケン','ken'],['ブランカ','blanka'],['ダルシム','dhalsim'],
-  ['エドモンド本田','e-honda'],['ザンギエフ','zangief'],['キャミィ','cammy'],['マノン','manon'],['マリーザ','marisa'],
+  ['エドモンド本田','honda'],['ザンギエフ','zangief'],['キャミィ','cammy'],['マノン','manon'],['マリーザ','marisa'],
   ['リリー','lily'],['JP','jp'],['ディージェイ','deejay'],['ラシード','rashid'],['A.K.I.','aki'],['エド','ed'],
-  ['豪鬼','akuma'],['テリー','terry'],['不知火舞','mai'],['ベガ','bison'],['エレナ','elena'],['サガット','sagat'],
-  ['C.ヴァイパー','c-viper'],['アレックス','alex'],['イングリッド','ingrid'],['ヤスミン','yasmine']
-].map(([name, slug]) => ({ name, id: slug, image: `https://www.streetfighter.com/6/buckler/assets/images/material/character/character_${slug}_l.png` }));
+  ['豪鬼','gouki'],['テリー','terry'],['不知火舞','mai'],['ベガ','vega'],['エレナ','elena'],['サガット','sagat'],
+  ['C.ヴァイパー','cviper'],['アレックス','alex'],['イングリッド','ingrid'],['ヤスミン','yasmine']
+].map(([name, slug]) => ({
+  name,
+  id: slug,
+  image: `./assets/characters/character_${slug}_l.png`
+}));
 
 const state = {
   data: { characters: CHARACTER_ROSTER, streams: [], upcoming: [] },
