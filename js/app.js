@@ -46,17 +46,11 @@ function formatTime(value, fallback='--:--'){ const d=new Date(value); if(Number
 function getCharacterImage(names){ const c=names.map(charByName).find(Boolean); return c?.image || ''; }
 function charImageStyle(names){ const image=getCharacterImage(names); return image ? `background-image:linear-gradient(180deg,rgba(8,10,15,.05),rgba(8,10,15,.86)),url('${image}')` : ''; }
 
-// YouTube channel icon: resolve it in the browser from channel_id only.
-// This keeps channel thumbnail URLs out of D1 and the Worker API.
-function channelIconUrl(channelId){
-  if(!channelId) return '';
-  return `https://unavatar.io/youtube/${encodeURIComponent(channelId)}`;
-}
-function channelIconHtml(channelId,name){
-  const icon=channelIconUrl(channelId);
-  return icon
-    ? `<img class="channel-icon" src="${escapeHtml(icon)}" alt="${escapeHtml(name)} のYouTubeチャンネルアイコン" loading="lazy" referrerpolicy="no-referrer">`
-    : `<div class="channel-icon channel-icon-placeholder" aria-hidden="true">▶</div>`;
+// Channel icons are supplied by the Worker from D1's channel_thumbnail_url.
+// No external avatar service or channel-id fallback is used.
+function channelIconHtml(thumbnailUrl,name){
+  if(!thumbnailUrl) return '';
+  return `<img class="channel-icon" src="${escapeHtml(thumbnailUrl)}" alt="${escapeHtml(name)} のYouTubeチャンネルアイコン" loading="lazy" referrerpolicy="no-referrer">`;
 }
 
 function liveCard(s){
@@ -80,8 +74,8 @@ function upcomingPage(){
   return `<section class="section"><div class="section-head"><div><h2>配信予定</h2><p>YouTubeで公開予定になっているSF6 LIVE</p></div><span class="result-count">${items.length} streams</span></div><div class="filter-row"><button class="chip ${state.charFilter==='all'?'active':''}" data-upcoming-char="all">すべて</button>${chars().map(c=>`<button class="chip ${state.charFilter===c.id?'active':''}" data-upcoming-char="${c.id}">${escapeHtml(c.name)}</button>`).join('')}</div><div class="upcoming-grid">${items.length?items.map(upcomingCard).join(''):'<div class="empty">該当する配信予定はありません。</div>'}</div></section>`;
 }
 function streamersPage(){
-  const names=[...new Map([...streams(),...state.data.upcoming].map(s=>[s.streamerId,{id:s.streamerId,name:s.streamer,characterNames:s.characterNames,lp:s.lp,mr:s.mr}])).values()];
-  return `<section class="section"><div class="section-head"><div><h2>配信者</h2><p>Cloudflare D1に登録されている配信者情報</p></div></div><div class="streamer-grid">${names.map(x=>`<article class="streamer-card"><div class="character-art channel-art">${channelIconHtml(x.id,x.name)}</div><div class="streamer-row"><strong>${escapeHtml(x.name)}</strong><button class="favorite ${isFav(x.id)?'on':''}" data-fav="${x.id}">${isFav(x.id)?'♥':'♡'}</button></div><small>${x.lp != null ? `LP ${escapeHtml(x.lp)}` : ''}${x.mr != null ? ` · MR ${escapeHtml(x.mr)}` : ''}</small></article>`).join('')}</div></section>`;
+  const names=[...new Map([...streams(),...state.data.upcoming].map(s=>[s.streamerId,{id:s.streamerId,name:s.streamer,channelThumbnailUrl:s.channelThumbnailUrl,characterNames:s.characterNames,lp:s.lp,mr:s.mr}])).values()];
+  return `<section class="section"><div class="section-head"><div><h2>配信者</h2><p>Cloudflare D1に登録されている配信者情報</p></div></div><div class="streamer-grid">${names.map(x=>`<article class="streamer-card"><div class="character-art channel-art">${channelIconHtml(x.channelThumbnailUrl,x.name)}</div><div class="streamer-row"><strong>${escapeHtml(x.name)}</strong><button class="favorite ${isFav(x.id)?'on':''}" data-fav="${x.id}">${isFav(x.id)?'♥':'♡'}</button></div><small>${x.lp != null ? `LP ${escapeHtml(x.lp)}` : ''}${x.mr != null ? ` · MR ${escapeHtml(x.mr)}` : ''}</small></article>`).join('')}</div></section>`;
 }
 function charactersPage(){
   return `<section class="section"><div class="section-head"><div><h2>キャラクター</h2><p>現在実装されているファイターの公式アート</p></div></div><div class="character-grid">${chars().map(c=>{const count=[...streams(),...state.data.upcoming].filter(s=>s.characterNames.some(n=>characterSlug(n)===c.id)).length;return `<article class="character-card" data-character="${c.id}"><div class="character-art image-art" style="background-image:linear-gradient(180deg,rgba(8,10,15,.02),rgba(8,10,15,.84)),url('${c.image}')"></div><strong>${escapeHtml(c.name)}</strong><small>${count} streams</small></article>`}).join('')}</div></section>`;
@@ -119,6 +113,7 @@ function mapVideo(v){
   const characterNames=parseCharacterNames(v.main_characters ?? v.main_character);
   return {
     id:v.video_id, streamerId:v.channel_id, characterNames, streamer:v.sf6_player_name || v.channel_title || v.channel_id,
+    channelThumbnailUrl:v.channel_thumbnail_url || '',
     status:v.status, viewers:v.concurrent_viewers, title:v.title || '', youtubeUrl:`https://www.youtube.com/watch?v=${v.video_id}`,
     thumbnail:v.thumbnail_url || `https://i.ytimg.com/vi/${v.video_id}/hqdefault.jpg`, lp:v.lp, mr:v.mr,
     scheduledStart:v.scheduled_start_time, actualStart:v.actual_start_time, actualEnd:v.actual_end_time
