@@ -55,9 +55,12 @@ function upcomingCard(s){
   return `<article class="upcoming-card" data-open="${s.id}"><div class="upcoming-thumb" style="background-image:${s.thumbnail ? `linear-gradient(135deg,rgba(20,24,31,.12),rgba(17,21,27,.78)),url('${escapeHtml(s.thumbnail)}')` : 'linear-gradient(135deg,#252b35,#11151b)'};background-size:cover;background-position:center"><span class="upcoming-time">${escapeHtml(formatJst(s.scheduledStart))}</span></div><div class="upcoming-body"><div class="streamer-row"><strong>${escapeHtml(s.streamer)}</strong><button class="favorite ${isFav(s.streamerId)?'on':''}" data-fav="${s.streamerId}">${isFav(s.streamerId)?'♥':'♡'}</button></div><p>${escapeHtml(s.title)}</p><div class="meta"><span>◉ ${escapeHtml(names)}</span><span>YouTube</span></div></div></article>`;
 }
 function home(){
-  const live=streams().filter(s=>s.status==='live').filter(s=>!state.query || `${s.streamer} ${s.title} ${s.characterNames.join(' ')}`.toLowerCase().includes(state.query.toLowerCase()));
+  const live=streams().filter(s=>s.status==='live')
+    .filter(s=>!state.charFilter || state.charFilter==='all' || s.characterNames.some(n=>characterSlug(n)===state.charFilter))
+    .filter(s=>!state.query || `${s.streamer} ${s.title} ${s.characterNames.join(' ')}`.toLowerCase().includes(state.query.toLowerCase()));
   const upcoming=filteredUpcoming().slice(0,6);
-  return `<section class="section"><div class="section-head"><div><h2>🔴 NOW LIVE</h2><p>いま見られるスト6配信</p></div><button class="section-link" data-go="upcoming">配信予定 →</button></div><div class="live-grid">${live.length?live.map(liveCard).join(''):'<div class="empty">現在LIVE中の配信はありません。</div>'}</div></section><section class="section"><div class="section-head"><div><h2>UPCOMING</h2><p>これから始まる配信</p></div><button class="section-link" data-go="upcoming">すべて見る →</button></div><div class="upcoming-grid">${upcoming.length?upcoming.map(upcomingCard).join(''):'<div class="empty">現在、配信予定はありません。</div>'}</div></section>`;
+  const selectedCharacter=state.charFilter!=='all' ? charByName(state.charFilter) : null;
+  return `<section class="section"><div class="section-head"><div><h2>🔴 NOW LIVE</h2><p>${selectedCharacter ? `${escapeHtml(selectedCharacter.name)} の現在LIVE中の配信` : 'いま見られるスト6配信'}</p></div>${selectedCharacter ? '<button class="section-link" data-clear-char>すべてのLIVE →</button>' : '<button class="section-link" data-go="upcoming">配信予定 →</button>'}</div>${selectedCharacter ? `<div class="filter-row"><button class="chip active" data-clear-char>◉ ${escapeHtml(selectedCharacter.name)}</button></div>` : ''}<div class="live-grid">${live.length?live.map(liveCard).join(''):'<div class="empty">現在LIVE中の配信はありません。</div>'}</div></section><section class="section"><div class="section-head"><div><h2>UPCOMING</h2><p>これから始まる配信</p></div><button class="section-link" data-go="upcoming">すべて見る →</button></div><div class="upcoming-grid">${upcoming.length?upcoming.map(upcomingCard).join(''):'<div class="empty">現在、配信予定はありません。</div>'}</div></section>`;
 }
 function upcomingPage(){
   const items=filteredUpcoming();
@@ -92,9 +95,11 @@ function render(){
 function bind(){
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>nav(b.dataset.go));
   document.querySelectorAll('[data-char]').forEach(b=>b.onclick=()=>{state.charFilter=b.dataset.char; state.view='upcoming'; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view==='upcoming')); render();});
+  document.querySelectorAll('[data-clear-char]').forEach(b=>b.onclick=()=>{state.charFilter='all'; state.view='home'; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view==='home')); render();});
   document.querySelectorAll('[data-fav]').forEach(b=>b.onclick=e=>{e.stopPropagation();toggleFav(b.dataset.fav)});
   document.querySelectorAll('[data-open]').forEach(card=>card.onclick=()=>openStream(card.dataset.open));
   const clear=$('#clear-favs'); if(clear) clear.onclick=()=>{state.favorites=[];saveFavs();render();};
+  document.querySelectorAll('.character-card').forEach(card=>card.onclick=()=>{state.charFilter=card.dataset.char; state.view='home'; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view==='home')); render();});
 }
 function openStream(id){ const all=[...streams(),...state.data.upcoming]; const s=all.find(x=>x.id===id); if(s) window.open(s.youtubeUrl,'_blank','noopener'); }
 function mapVideo(v){
