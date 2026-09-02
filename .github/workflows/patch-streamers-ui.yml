@@ -1,0 +1,91 @@
+name: Patch streamer page UI
+
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-streamers-ui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch streamer page
+        shell: python
+        run: |
+          from pathlib import Path
+
+          app = Path('js/app.js')
+          text = app.read_text(encoding='utf-8')
+          old = """function streamersPage(){\n  const names=[...new Map([...streams(),...state.data.upcoming].map(s=>[s.streamerId,{id:s.streamerId,name:s.streamer,channelThumbnailUrl:s.channelThumbnailUrl,characterNames:s.characterNames,lp:s.lp,mr:s.mr}])).values()];\n  return `<section class=\"section\"><div class=\"section-head\"><div><h2>配信者</h2><p>Cloudflare D1に登録されている配信者情報</p></div></div><div class=\"streamer-grid\">${names.map(x=>`<article class=\"streamer-card\"><div class=\"character-art channel-art\">${channelIconHtml(x.channelThumbnailUrl,x.name)}</div><div class=\"streamer-row\"><strong>${escapeHtml(x.name)}</strong><button class=\"favorite ${isFav(x.id)?'on':''}\" data-fav=\"${x.id}\">${isFav(x.id)?'♥':'♡'}</button></div><small>${x.lp != null ? `LP ${escapeHtml(x.lp)}` : ''}${x.mr != null ? ` · MR ${escapeHtml(x.mr)}` : ''}</small></article>`).join('')}</div></section>`;\n}\n"""
+          new = """function streamersPage(){\n  const names=state.data.streamers || [];\n  return `<section class=\"section\"><div class=\"section-head\"><div><h2>配信者</h2><p>Cloudflare D1に登録されている配信者情報</p></div><span class=\"result-count\">${names.length} streamers</span></div><div class=\"streamer-grid\">${names.map(x=>`<article class=\"streamer-card\"><div class=\"channel-avatar-wrap\">${channelIconHtml(x.channelThumbnailUrl,x.name)}</div><div class=\"streamer-row\"><strong>${escapeHtml(x.name)}</strong><button class=\"favorite ${isFav(x.id)?'on':''}\" data-fav=\"${x.id}\">${isFav(x.id)?'♥':'♡'}</button></div><div class=\"streamer-stats\"><span><b>登録者</b>${x.subscriberCount != null ? Number(x.subscriberCount).toLocaleString() : '--'}</span><span><b>カテゴリ</b>${escapeHtml(x.streamerCategoryLabel || x.streamerCategory || '--')}</span></div><small>${x.lp != null ? `LP ${escapeHtml(x.lp)}` : ''}${x.mr != null ? ` · MR ${escapeHtml(x.mr)}` : ''}</small></article>`).join('')}</div></section>`;\n}\n"""
+          if old not in text:
+              raise SystemExit('streamersPage target not found')
+          app.write_text(text.replace(old, new), encoding='utf-8')
+
+          css = Path('css/style.css')
+          c = css.read_text(encoding='utf-8')
+          old_css = '.character-art{height:150px;border-radius:8px;background:linear-gradient(145deg,#252b35,#11151b);display:flex;align-items:end;justify-content:flex-start;padding:10px;font-size:16px;font-weight:950;letter-spacing:-.05em;background-size:cover;background-position:center top;overflow:hidden}.character-art.image-art{background-repeat:no-repeat}.character-card strong,.streamer-card strong{display:block;margin-top:9px;font-size:11px}.character-card small,.streamer-card small{display:block;margin-top:4px;color:#77808e;font-size:9px}'
+          new_css = '.character-art{height:150px;border-radius:8px;background:linear-gradient(145deg,#252b35,#11151b);display:flex;align-items:end;justify-content:flex-start;padding:10px;font-size:16px;font-weight:950;letter-spacing:-.05em;background-size:cover;background-position:center top;overflow:hidden}.character-art.image-art{background-repeat:no-repeat}.channel-avatar-wrap{width:100%;aspect-ratio:1/1;border-radius:8px;background:#0c1016;border:1px solid var(--line);display:grid;place-items:center;overflow:hidden}.channel-avatar-wrap .channel-icon{width:100%;height:100%;display:block;object-fit:contain;object-position:center}.character-card strong,.streamer-card strong{display:block;margin-top:9px;font-size:11px}.character-card small,.streamer-card small{display:block;margin-top:4px;color:#77808e;font-size:9px}.streamer-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}.streamer-stats span{min-width:0;padding:7px 8px;border:1px solid var(--line);border-radius:7px;background:#0d1117;color:#d8dde5;font-size:10px;font-weight:750;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.streamer-stats b{display:block;margin-bottom:3px;color:#697382;font-size:8px;font-weight:800;letter-spacing:.04em}.streamer-card small{line-height:1.5}'
+          if old_css not in c:
+              raise SystemExit('CSS target not found')
+          c = c.replace(old_css, new_css)
+          c = c.replace('@media(max-width:760px){', '@media(max-width:760px){')
+          css.write_text(c, encoding='utf-8')
+
+      - name: Patch data loading and category labels
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('js/app.js')
+          s=p.read_text(encoding='utf-8')
+          marker="const streams = () => state.data.streams;"
+          insert="""const streams = () => state.data.streams;\nconst streamerCategoryLabel = value => ({pro_gamer:'プロゲーマー',vtuber:'VTuber',game_streamer:'ゲーム配信者'}[value] || value || '--');\n"""
+          if marker in s and 'const streamerCategoryLabel' not in s:
+              s=s.replace(marker,insert,1)
+          s=s.replace("data: { characters: CHARACTER_ROSTER, streams: [], upcoming: [] }", "data: { characters: CHARACTER_ROSTER, streams: [], upcoming: [], streamers: [] }")
+          old_map="""function mapVideo(v){\n  const characterNames=parseCharacterNames(v.main_characters ?? v.main_character);\n  return {\n    id:v.video_id, streamerId:v.channel_id, characterNames, streamer:v.sf6_player_name || v.channel_title || v.channel_id,\n    channelThumbnailUrl:v.channel_thumbnail_url || '',\n    status:v.status, viewers:v.concurrent_viewers, title:v.title || '', youtubeUrl:`https://www.youtube.com/watch?v=${v.video_id}`,\n    thumbnail:v.thumbnail_url || `https://i.ytimg.com/vi/${v.video_id}/hqdefault.jpg`, lp:v.lp, mr:v.mr,\n    scheduledStart:v.scheduled_start_time, actualStart:v.actual_start_time, actualEnd:v.actual_end_time\n  };\n}\n"""
+          new_map=old_map+"""function mapStreamer(s){\n  return {\n    id:s.channel_id, name:s.sf6_player_name || s.channel_title || s.channel_id,\n    channelThumbnailUrl:s.channel_thumbnail_url || '', lp:s.lp, mr:s.mr,\n    subscriberCount:s.subscriber_count, streamerCategory:s.streamer_category,\n    streamerCategoryLabel:streamerCategoryLabel(s.streamer_category),\n  };\n}\n"""
+          if old_map not in s:
+              raise SystemExit('mapVideo target not found')
+          s=s.replace(old_map,new_map,1)
+          fetch_marker="async function fetchVideos(status, limit=200){"
+          idx=s.find(fetch_marker)
+          if idx<0: raise SystemExit('fetchVideos target not found')
+          # Add a dedicated streamer fetch before the existing fetchVideos function.
+          fn="""async function fetchStreamers(){\n  try {\n    const response=await fetch(`${API_BASE}/api/streamers?limit=200`);\n    if(!response.ok) throw new Error(`HTTP ${response.status}`);\n    const data=await response.json();\n    state.data.streamers=(data.items||[]).map(mapStreamer);\n  } catch(error) {\n    console.error('Failed to fetch streamers',error);\n    state.data.streamers=[];\n  }\n}\n\n"""
+          if 'async function fetchStreamers()' not in s:
+              s=s[:idx]+fn+s[idx:]
+          # Ensure initial loading calls fetchStreamers alongside the video calls.
+          for needle in ["await fetchVideos('live'", "fetchVideos('live'"]:
+              pass
+          # Replace the final Promise.all/load block by inserting a fetchStreamers call at the first existing Promise.all that loads videos.
+          if 'await fetchStreamers();' not in s:
+              candidates=['await Promise.all([fetchVideos', 'Promise.all([fetchVideos']
+              pos=-1
+              for cand in candidates:
+                  pos=s.find(cand)
+                  if pos>=0: break
+              if pos>=0:
+                  line_end=s.find('\n',pos)
+                  # Add after the Promise.all expression's line; loading code is intentionally kept intact.
+                  s=s[:line_end+1]+'  await fetchStreamers();\n'+s[line_end+1:]
+              else:
+                  # Fallback: call after app initialization by appending a safe async loader.
+                  s += "\nfetchStreamers().then(()=>{ if(state.view==='streamers') render(); });\n"
+          p.write_text(s,encoding='utf-8')
+
+      - name: Commit and remove patch workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add js/app.js css/style.css .github/workflows/patch-streamers-ui.yml
+          git commit -m 'fix: improve streamer cards and show channel stats'
+          git rm .github/workflows/patch-streamers-ui.yml
+          git commit -m 'chore: remove one-time streamer UI patch workflow'
+          git push
