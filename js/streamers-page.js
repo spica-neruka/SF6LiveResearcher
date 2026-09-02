@@ -18,6 +18,10 @@
     return document.querySelector('#page-title')?.textContent === '配信者';
   }
 
+  function isFavoritesPage() {
+    return document.querySelector('#page-title')?.textContent === 'お気に入り';
+  }
+
   function icon(url, name) {
     if (!url) return '';
     return `<img class="channel-icon" src="${escapeHtml(url)}" alt="${escapeHtml(name)} のYouTubeチャンネルアイコン" loading="lazy" referrerpolicy="no-referrer">`;
@@ -101,7 +105,74 @@
     }
   }
 
+  async function fetchAllFavoriteStreamers(favorites) {
+    const found = new Map();
+    let offset = 0;
+    let total = 0;
+    do {
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(offset), sort: 'newest' });
+      const response = await fetch(`${API_BASE}/api/streamers?${params}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error(`streamers API ${response.status}`);
+      const data = await response.json();
+      total = Number(data.total || 0);
+      for (const streamer of data.items || []) {
+        if (favorites.includes(streamer.channel_id)) found.set(streamer.channel_id, streamer);
+      }
+      offset += PAGE_SIZE;
+      if (!data.hasNextPage || found.size === favorites.length) break;
+    } while (offset < total && offset < 10000);
+    return found;
+  }
+
+  async function renderOfflineFavorites() {
+    if (!isFavoritesPage()) return;
+    const app = document.querySelector('#app');
+    if (!app) return;
+    let favorites = [];
+    try { favorites = JSON.parse(localStorage.getItem('sf6-live-favorites') || '[]'); } catch {}
+    if (!favorites.length) {
+      app.innerHTML = '<section class="section"><div class="section-head"><div><h2>お気に入り</h2><p>このブラウザだけに保存されます。アカウントは不要です。</p></div></div><div class="empty">お気に入りの配信者はありません。</div></section>';
+      return;
+    }
+    try {
+      const [streamers, liveResponse] = await Promise.all([
+        fetchAllFavoriteStreamers(favorites),
+        fetch(`${API_BASE}/api/videos?status=live&limit=200`, { cache: 'no-store' })
+      ]);
+      const liveItems = liveResponse.ok ? ((await liveResponse.json()).items || []) : [];
+      const liveByChannel = new Map();
+      for (const video of liveItems) if (video.channel_id && !liveByChannel.has(video.channel_id)) liveByChannel.set(video.channel_id, video);
+      const items = favorites.map(channelId => {
+        const streamer = streamers.get(channelId);
+        return streamer ? { streamer, live: liveByChannel.get(channelId) || null } : null;
+      }).filter(Boolean);
+      app.innerHTML = `<section class="section"><div class="section-head"><div><h2>お気に入り</h2><p>登録した配信者を、配信中でなくても表示します。</p></div><span class="result-count">${items.length} streamers</span></div><div class="streamer-grid">${items.map(({ streamer, live }) => {
+        const name = streamer.sf6_player_name || streamer.channel_title || streamer.channel_id;
+        return `<article class="streamer-card" data-favorite-channel="${escapeHtml(streamer.channel_id)}" data-live-video="${escapeHtml(live?.video_id || '')}">
+          <div class="channel-avatar-wrap">${icon(streamer.channel_thumbnail_url, name)}</div>
+          <div class="streamer-row"><strong>${escapeHtml(name)}</strong><button class="favorite on" data-favorite-remove="${escapeHtml(streamer.channel_id)}" aria-label="お気に入りから削除">♥</button></div>
+          <div class="streamer-stats"><span><b>登録者</b>${streamer.subscriber_count != null ? Number(streamer.subscriber_count).toLocaleString() : '--'}</span><span><b>カテゴリ</b>${escapeHtml(label(streamer.streamer_category))}</span></div>
+          <small>${live ? '🔴 現在配信中' : 'YouTubeチャンネル'}</small>
+        </article>`;
+      }).join('')}</div></section>`;
+    } catch (error) {
+      console.error('Failed to render favorite streamers', error);
+    }
+  }
+
+  // The existing index.html observer calls this global function when the Favorites page changes.
+  window.renderOfflineFavorites = renderOfflineFavorites;
+
   document.addEventListener('click', (event) => {
+    if (isFavoritesPage() && event.target.closest('[data-favorite-remove]')) {
+      event.stopPropagation();
+      const id = event.target.closest('[data-favorite-remove]').dataset.favoriteRemove;
+      let favorites = [];
+      try { favorites = JSON.parse(localStorage.getItem('sf6-live-favorites') || '[]'); } catch {}
+      localStorage.setItem('sf6-live-favorites', JSON.stringify(favorites.filter(x => x !== id)));
+      renderOfflineFavorites();
+      return;
+    }
     if (!isStreamerPage()) return;
     const fav = event.target.closest('[data-streamer-fav]');
     if (fav) {
@@ -138,11 +209,9 @@
   });
 
   const observer = new MutationObserver(() => {
-    if (isStreamerPage()) {
-      setTimeout(load, 0);
-    } else {
-      state.lastKey = '';
-    }
+    if (isStreamerPage()) setTimeout(load, 0);
+    else if (isFavoritesPage()) setTimeout(renderOfflineFavorites, 0);
+    else state.lastKey = '';
   });
   observer.observe(document.body, { childList: true, subtree: true });
 })();
