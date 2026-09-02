@@ -15,7 +15,7 @@ const CHARACTER_ROSTER = [
 }));
 
 const state = {
-  data: { characters: CHARACTER_ROSTER, streams: [], upcoming: [] },
+  data: { characters: CHARACTER_ROSTER, streams: [], upcoming: [], streamers: [] },
   view: 'home', query: '', charFilter: 'all',
   favorites: JSON.parse(localStorage.getItem('sf6-live-favorites') || '[]')
 };
@@ -24,6 +24,8 @@ const escapeHtml = (v) => String(v ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;'
 const chars = () => state.data.characters;
 const charByName = name => chars().find(c => c.name === name) || null;
 const streams = () => state.data.streams;
+const streamerCategoryLabel = value => ({pro_gamer:'プロゲーマー',vtuber:'VTuber',game_streamer:'ゲーム配信者'}[value] || value || '--');
+
 const isFav = id => state.favorites.includes(id);
 function saveFavs(){ localStorage.setItem('sf6-live-favorites', JSON.stringify(state.favorites)); }
 function toggleFav(id){ state.favorites = isFav(id) ? state.favorites.filter(x=>x!==id) : [...state.favorites,id]; saveFavs(); render(); }
@@ -74,8 +76,8 @@ function upcomingPage(){
   return `<section class="section"><div class="section-head"><div><h2>配信予定</h2><p>YouTubeで公開予定になっているSF6 LIVE</p></div><span class="result-count">${items.length} streams</span></div><div class="filter-row"><button class="chip ${state.charFilter==='all'?'active':''}" data-upcoming-char="all">すべて</button>${chars().map(c=>`<button class="chip ${state.charFilter===c.id?'active':''}" data-upcoming-char="${c.id}">${escapeHtml(c.name)}</button>`).join('')}</div><div class="upcoming-grid">${items.length?items.map(upcomingCard).join(''):'<div class="empty">該当する配信予定はありません。</div>'}</div></section>`;
 }
 function streamersPage(){
-  const names=[...new Map([...streams(),...state.data.upcoming].map(s=>[s.streamerId,{id:s.streamerId,name:s.streamer,channelThumbnailUrl:s.channelThumbnailUrl,characterNames:s.characterNames,lp:s.lp,mr:s.mr}])).values()];
-  return `<section class="section"><div class="section-head"><div><h2>配信者</h2><p>Cloudflare D1に登録されている配信者情報</p></div></div><div class="streamer-grid">${names.map(x=>`<article class="streamer-card"><div class="character-art channel-art">${channelIconHtml(x.channelThumbnailUrl,x.name)}</div><div class="streamer-row"><strong>${escapeHtml(x.name)}</strong><button class="favorite ${isFav(x.id)?'on':''}" data-fav="${x.id}">${isFav(x.id)?'♥':'♡'}</button></div><small>${x.lp != null ? `LP ${escapeHtml(x.lp)}` : ''}${x.mr != null ? ` · MR ${escapeHtml(x.mr)}` : ''}</small></article>`).join('')}</div></section>`;
+  const names=state.data.streamers || [];
+  return `<section class="section"><div class="section-head"><div><h2>配信者</h2><p>Cloudflare D1に登録されている配信者情報</p></div><span class="result-count">${names.length} streamers</span></div><div class="streamer-grid">${names.map(x=>`<article class="streamer-card"><div class="channel-avatar-wrap">${channelIconHtml(x.channelThumbnailUrl,x.name)}</div><div class="streamer-row"><strong>${escapeHtml(x.name)}</strong><button class="favorite ${isFav(x.id)?'on':''}" data-fav="${x.id}">${isFav(x.id)?'♥':'♡'}</button></div><div class="streamer-stats"><span><b>登録者</b>${x.subscriberCount != null ? Number(x.subscriberCount).toLocaleString() : '--'}</span><span><b>カテゴリ</b>${escapeHtml(x.streamerCategoryLabel || x.streamerCategory || '--')}</span></div><small>${x.lp != null ? `LP ${escapeHtml(x.lp)}` : ''}${x.mr != null ? ` · MR ${escapeHtml(x.mr)}` : ''}</small></article>`).join('')}</div></section>`;
 }
 function charactersPage(){
   return `<section class="section"><div class="section-head"><div><h2>キャラクター</h2><p>現在実装されているファイターの公式アート</p></div></div><div class="character-grid">${chars().map(c=>{const count=[...streams(),...state.data.upcoming].filter(s=>s.characterNames.some(n=>characterSlug(n)===c.id)).length;return `<article class="character-card" data-character="${c.id}"><div class="character-art image-art" style="background-image:linear-gradient(180deg,rgba(8,10,15,.02),rgba(8,10,15,.84)),url('${c.image}')"></div><strong>${escapeHtml(c.name)}</strong><small>${count} streams</small></article>`}).join('')}</div></section>`;
@@ -119,12 +121,33 @@ function mapVideo(v){
     scheduledStart:v.scheduled_start_time, actualStart:v.actual_start_time, actualEnd:v.actual_end_time
   };
 }
+function mapStreamer(s){
+  return {
+    id:s.channel_id, name:s.sf6_player_name || s.channel_title || s.channel_id,
+    channelThumbnailUrl:s.channel_thumbnail_url || '', lp:s.lp, mr:s.mr,
+    subscriberCount:s.subscriber_count, streamerCategory:s.streamer_category,
+    streamerCategoryLabel:streamerCategoryLabel(s.streamer_category),
+  };
+}
+async function fetchStreamers(){
+  try {
+    const response=await fetch(`${API_BASE}/api/streamers?limit=200`);
+    if(!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data=await response.json();
+    state.data.streamers=(data.items||[]).map(mapStreamer);
+  } catch(error) {
+    console.error('Failed to fetch streamers',error);
+    state.data.streamers=[];
+  }
+}
+
 async function fetchVideos(status, limit=200){
   const response=await fetch(`${API_BASE}/api/videos?status=${status}&limit=${limit}`,{headers:{accept:'application/json'},cache:'no-store'});
   if(!response.ok) throw new Error(`API ${response.status}`); return response.json();
 }
 async function loadApiData(){
   const [allPayload, upcomingPayload]=await Promise.all([fetchVideos('all'),fetchVideos('upcoming')]);
+  await fetchStreamers();
   state.data.streams=(allPayload.items||[]).map(mapVideo).filter(v=>v.status==='live');
   state.data.upcoming=(upcomingPayload.items||[]).map(mapVideo).filter(v=>v.status==='upcoming');
 }
