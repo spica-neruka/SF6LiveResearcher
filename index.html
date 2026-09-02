@@ -47,5 +47,39 @@
   </div>
   <script type="module" src="./js/app.js"></script>
   <script src="./js/character-images.js"></script>
+  <script>
+    // Streamer cards: open the current LIVE video when available,
+    // otherwise open the streamer's YouTube channel.
+    document.addEventListener('click', async (event) => {
+      const card = event.target.closest('.streamer-card');
+      if (!card || event.target.closest('.favorite')) return;
+
+      const name = card.querySelector('.streamer-row strong')?.textContent?.trim();
+      if (!name) return;
+
+      try {
+        const apiBase = window.SF6_API_BASE || 'https://sf6-live-researcher.u-ambers.workers.dev';
+        const [streamersResponse, liveResponse] = await Promise.all([
+          fetch(`${apiBase}/api/streamers?limit=200`, { cache: 'no-store' }),
+          fetch(`${apiBase}/api/videos?status=live&limit=200`, { cache: 'no-store' })
+        ]);
+        if (!streamersResponse.ok) throw new Error(`streamers API ${streamersResponse.status}`);
+
+        const streamers = (await streamersResponse.json()).items || [];
+        const streamer = streamers.find(x => (x.sf6_player_name || x.channel_title || x.channel_id) === name);
+        if (!streamer?.channel_id) return;
+
+        let target = `https://www.youtube.com/channel/${encodeURIComponent(streamer.channel_id)}`;
+        if (liveResponse.ok) {
+          const liveItems = (await liveResponse.json()).items || [];
+          const live = liveItems.find(x => x.channel_id === streamer.channel_id && x.status === 'live');
+          if (live?.video_id) target = `https://www.youtube.com/watch?v=${encodeURIComponent(live.video_id)}`;
+        }
+        window.open(target, '_blank', 'noopener');
+      } catch (error) {
+        console.error('Failed to open streamer destination', error);
+      }
+    });
+  </script>
 </body>
 </html>
