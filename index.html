@@ -48,9 +48,79 @@
   <script type="module" src="./js/app.js"></script>
   <script src="./js/character-images.js"></script>
   <script>
-    // Streamer cards: open the current LIVE video when available,
-    // otherwise open the streamer's YouTube channel.
+    const SF6_API_BASE = window.SF6_API_BASE || 'https://sf6-live-researcher.u-ambers.workers.dev';
+
+    function favoriteChannelIcon(url, name) {
+      return url
+        ? `<img class="channel-icon" src="${String(url).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" alt="${String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')} のYouTubeチャンネルアイコン" loading="lazy" referrerpolicy="no-referrer">`
+        : '';
+    }
+
+    async function renderOfflineFavorites() {
+      const favorites = JSON.parse(localStorage.getItem('sf6-live-favorites') || '[]');
+      const app = document.querySelector('#app');
+      if (!app || document.querySelector('#page-title')?.textContent !== 'お気に入り') return;
+
+      if (!favorites.length) {
+        app.innerHTML = `<section class="section"><div class="section-head"><div><h2>お気に入り</h2><p>このブラウザだけに保存されます。アカウントは不要です。</p></div></div><div class="empty">お気に入りの配信者はありません。</div></section>`;
+        return;
+      }
+
+      try {
+        const [streamersResponse, liveResponse] = await Promise.all([
+          fetch(`${SF6_API_BASE}/api/streamers?limit=200`, { cache: 'no-store' }),
+          fetch(`${SF6_API_BASE}/api/videos?status=live&limit=200`, { cache: 'no-store' })
+        ]);
+        if (!streamersResponse.ok) throw new Error(`streamers API ${streamersResponse.status}`);
+
+        const streamers = (await streamersResponse.json()).items || [];
+        const liveItems = liveResponse.ok ? ((await liveResponse.json()).items || []) : [];
+        const liveByChannel = new Map();
+        for (const video of liveItems) {
+          if (video.channel_id && !liveByChannel.has(video.channel_id)) liveByChannel.set(video.channel_id, video);
+        }
+
+        const items = favorites.map(channelId => {
+          const streamer = streamers.find(x => x.channel_id === channelId);
+          if (!streamer) return null;
+          return { streamer, live: liveByChannel.get(channelId) || null };
+        }).filter(Boolean);
+
+        app.innerHTML = `<section class="section"><div class="section-head"><div><h2>お気に入り</h2><p>登録した配信者を、配信中でなくても表示します。</p></div><span class="result-count">${items.length} streamers</span></div><div class="streamer-grid">${items.map(({ streamer, live }) => {
+          const name = streamer.sf6_player_name || streamer.channel_title || streamer.channel_id;
+          const category = ({pro_gamer:'プロゲーマー',vtuber:'VTuber',game_streamer:'ゲーム配信者'}[streamer.streamer_category] || streamer.streamer_category || '--');
+          return `<article class="streamer-card" data-favorite-channel="${streamer.channel_id}" data-live-video="${live?.video_id || ''}">
+            <div class="channel-avatar-wrap">${favoriteChannelIcon(streamer.channel_thumbnail_url, name)}</div>
+            <div class="streamer-row"><strong>${name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</strong><button class="favorite on" data-favorite-remove="${streamer.channel_id}" aria-label="お気に入りから削除">♥</button></div>
+            <div class="streamer-stats"><span><b>登録者</b>${streamer.subscriber_count != null ? Number(streamer.subscriber_count).toLocaleString() : '--'}</span><span><b>カテゴリ</b>${category.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span></div>
+            <small>${live ? '🔴 現在配信中' : 'YouTubeチャンネル'}</small>
+          </article>`;
+        }).join('')}</div></section>`;
+      } catch (error) {
+        console.error('Failed to render favorite streamers', error);
+      }
+    }
+
     document.addEventListener('click', async (event) => {
+      const favoriteCard = event.target.closest('[data-favorite-channel]');
+      if (favoriteCard) {
+        if (event.target.closest('[data-favorite-remove]')) {
+          event.stopPropagation();
+          const id = event.target.closest('[data-favorite-remove]').dataset.favoriteRemove;
+          const favorites = JSON.parse(localStorage.getItem('sf6-live-favorites') || '[]').filter(x => x !== id);
+          localStorage.setItem('sf6-live-favorites', JSON.stringify(favorites));
+          renderOfflineFavorites();
+          return;
+        }
+        const channelId = favoriteCard.dataset.favoriteChannel;
+        const liveVideo = favoriteCard.dataset.liveVideo;
+        const target = liveVideo
+          ? `https://www.youtube.com/watch?v=${encodeURIComponent(liveVideo)}`
+          : `https://www.youtube.com/channel/${encodeURIComponent(channelId)}`;
+        window.open(target, '_blank', 'noopener');
+        return;
+      }
+
       const card = event.target.closest('.streamer-card');
       if (!card || event.target.closest('.favorite')) return;
 
@@ -58,10 +128,9 @@
       if (!name) return;
 
       try {
-        const apiBase = window.SF6_API_BASE || 'https://sf6-live-researcher.u-ambers.workers.dev';
         const [streamersResponse, liveResponse] = await Promise.all([
-          fetch(`${apiBase}/api/streamers?limit=200`, { cache: 'no-store' }),
-          fetch(`${apiBase}/api/videos?status=live&limit=200`, { cache: 'no-store' })
+          fetch(`${SF6_API_BASE}/api/streamers?limit=200`, { cache: 'no-store' }),
+          fetch(`${SF6_API_BASE}/api/videos?status=live&limit=200`, { cache: 'no-store' })
         ]);
         if (!streamersResponse.ok) throw new Error(`streamers API ${streamersResponse.status}`);
 
@@ -80,6 +149,14 @@
         console.error('Failed to open streamer destination', error);
       }
     });
+
+    const favoriteObserver = new MutationObserver(() => {
+      if (document.querySelector('#page-title')?.textContent === 'お気に入り') {
+        clearTimeout(window.__sf6FavoriteRenderTimer);
+        window.__sf6FavoriteRenderTimer = setTimeout(renderOfflineFavorites, 0);
+      }
+    });
+    favoriteObserver.observe(document.body, { childList: true, subtree: true });
   </script>
 </body>
 </html>
