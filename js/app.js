@@ -14,9 +14,19 @@ const CHARACTER_ROSTER = [
   image: `./assets/characters/character_${slug}_l.png`
 }));
 
+const LIVE_CATEGORY_LABELS = {
+  ranked: 'ランクマッチ',
+  custom: '参加型',
+  tournament: '大会',
+  casual: 'カジュアル',
+  training: 'トレーニング',
+  avatar_battle: 'アバターバトル',
+  other: 'その他'
+};
+
 const state = {
   data: { characters: CHARACTER_ROSTER, streams: [], upcoming: [], streamers: [] },
-  view: 'home', query: '', charFilter: 'all',
+  view: 'home', query: '', charFilter: 'all', liveCategoryFilter: 'all',
   favorites: JSON.parse(localStorage.getItem('sf6-live-favorites') || '[]')
 };
 const $ = (s) => document.querySelector(s);
@@ -25,16 +35,33 @@ const chars = () => state.data.characters;
 const charByName = name => chars().find(c => c.name === name) || null;
 const streams = () => state.data.streams;
 const streamerCategoryLabel = value => ({pro_gamer:'プロゲーマー',vtuber:'VTuber',game_streamer:'ゲーム配信者'}[value] || value || '--');
+const liveCategoryLabel = value => LIVE_CATEGORY_LABELS[value] || value || 'その他';
 
 const isFav = id => state.favorites.includes(id);
 function saveFavs(){ localStorage.setItem('sf6-live-favorites', JSON.stringify(state.favorites)); }
 function toggleFav(id){ state.favorites = isFav(id) ? state.favorites.filter(x=>x!==id) : [...state.favorites,id]; saveFavs(); render(); }
-function nav(view){ state.view=view; state.charFilter='all'; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===view)); render(); }
+function nav(view){ state.view=view; state.charFilter='all'; state.liveCategoryFilter='all'; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===view)); render(); }
 function filteredUpcoming(){
   return state.data.upcoming.filter(s =>
     (!state.charFilter || state.charFilter === 'all' || s.characterNames.some(n => characterSlug(n) === state.charFilter)) &&
     (!state.query || `${s.streamer} ${s.title} ${s.characterNames.join(' ')}`.toLowerCase().includes(state.query.toLowerCase()))
   );
+}
+function filteredLive(){
+  return streams().filter(s =>
+    s.status === 'live' &&
+    (!state.charFilter || state.charFilter === 'all' || s.characterNames.some(n => characterSlug(n) === state.charFilter)) &&
+    (!state.liveCategoryFilter || state.liveCategoryFilter === 'all' || s.category === state.liveCategoryFilter) &&
+    (!state.query || `${s.streamer} ${s.title} ${s.characterNames.join(' ')}`.toLowerCase().includes(state.query.toLowerCase()))
+  );
+}
+function availableLiveCategories(){
+  return [...new Set(streams().filter(s=>s.status==='live').map(s=>s.category || 'other'))]
+    .filter(category => LIVE_CATEGORY_LABELS[category] || category)
+    .sort((a,b) => {
+      const order = ['ranked','custom','tournament','casual','training','avatar_battle','other'];
+      return (order.indexOf(a) === -1 ? 999 : order.indexOf(a)) - (order.indexOf(b) === -1 ? 999 : order.indexOf(b));
+    });
 }
 function characterSlug(name){ return charByName(name)?.id || normalizeCharacter(name); }
 function normalizeCharacter(name){ return String(name || 'unknown').trim().normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,'-') || 'unknown'; }
@@ -57,19 +84,19 @@ function channelIconHtml(thumbnailUrl,name){
 
 function liveCard(s){
   const names=s.characterNames.join(' / ');
-  return `<article class="stream-card" data-open="${s.id}"><div class="thumb" style="background-image:linear-gradient(135deg,rgba(20,24,31,.25),rgba(17,21,27,.72)),url('${escapeHtml(s.thumbnail)}');background-size:cover;background-position:center"><span class="live-pill">● LIVE</span><span class="char-badge">${escapeHtml(names)}</span></div><div class="card-body"><div class="streamer-row"><span class="streamer-name">${escapeHtml(s.streamer)}</span><button class="favorite ${isFav(s.streamerId)?'on':''}" data-fav="${s.streamerId}" aria-label="お気に入り">${isFav(s.streamerId)?'♥':'♡'}</button></div><div class="meta"><span>◉ ${escapeHtml(names)}</span>${s.viewers != null ? `<span>👁 ${Number(s.viewers).toLocaleString()}</span>` : ''}</div></div></article>`;
+  return `<article class="stream-card" data-open="${s.id}"><div class="thumb" style="background-image:linear-gradient(135deg,rgba(20,24,31,.25),rgba(17,21,27,.72)),url('${escapeHtml(s.thumbnail)}');background-size:cover;background-position:center"><span class="live-pill">● LIVE</span><span class="char-badge">${escapeHtml(names)}</span></div><div class="card-body"><div class="streamer-row"><span class="streamer-name">${escapeHtml(s.streamer)}</span><button class="favorite ${isFav(s.streamerId)?'on':''}" data-fav="${s.streamerId}" aria-label="お気に入り">${isFav(s.streamerId)?'♥':'♡'}</button></div><div class="meta"><span>◉ ${escapeHtml(names)}</span><span class="live-category">${escapeHtml(liveCategoryLabel(s.category))}</span>${s.viewers != null ? `<span>👁 ${Number(s.viewers).toLocaleString()}</span>` : ''}</div></div></article>`;
 }
 function upcomingCard(s){
   const names=s.characterNames.join(' / ');
   return `<article class="upcoming-card" data-open="${s.id}"><div class="upcoming-thumb" style="background-image:${s.thumbnail ? `linear-gradient(135deg,rgba(20,24,31,.12),rgba(17,21,27,.78)),url('${escapeHtml(s.thumbnail)}')` : 'linear-gradient(135deg,#252b35,#11151b)'};background-size:cover;background-position:center"><span class="upcoming-time">${escapeHtml(formatJst(s.scheduledStart))}</span></div><div class="upcoming-body"><div class="streamer-row"><strong>${escapeHtml(s.streamer)}</strong><button class="favorite ${isFav(s.streamerId)?'on':''}" data-fav="${s.streamerId}">${isFav(s.streamerId)?'♥':'♡'}</button></div><p>${escapeHtml(s.title)}</p><div class="meta"><span>◉ ${escapeHtml(names)}</span><span>YouTube</span></div></div></article>`;
 }
 function home(){
-  const live=streams().filter(s=>s.status==='live')
-    .filter(s=>!state.charFilter || state.charFilter==='all' || s.characterNames.some(n=>characterSlug(n)===state.charFilter))
-    .filter(s=>!state.query || `${s.streamer} ${s.title} ${s.characterNames.join(' ')}`.toLowerCase().includes(state.query.toLowerCase()));
+  const live=filteredLive();
   const upcoming=filteredUpcoming().slice(0,6);
   const selectedCharacter=state.charFilter!=='all' ? charByName(state.charFilter) : null;
-  return `<section class="section"><div class="section-head"><div><h2>🔴 NOW LIVE</h2><p>${selectedCharacter ? `${escapeHtml(selectedCharacter.name)} の現在LIVE中の配信` : 'いま見られるスト6配信'}</p></div>${selectedCharacter ? '<button class="section-link" data-clear-char>すべてのLIVE →</button>' : '<button class="section-link" data-go="upcoming">配信予定 →</button>'}</div>${selectedCharacter ? `<div class="filter-row"><button class="chip active" data-clear-char>◉ ${escapeHtml(selectedCharacter.name)}</button></div>` : ''}<div class="live-grid">${live.length?live.map(liveCard).join(''):'<div class="empty">現在LIVE中の配信はありません。</div>'}</div></section><section class="section"><div class="section-head"><div><h2>UPCOMING</h2><p>これから始まる配信</p></div><button class="section-link" data-go="upcoming">すべて見る →</button></div><div class="upcoming-grid">${upcoming.length?upcoming.map(upcomingCard).join(''):'<div class="empty">現在、配信予定はありません。</div>'}</div></section>`;
+  const selectedCategory=state.liveCategoryFilter!=='all' ? liveCategoryLabel(state.liveCategoryFilter) : null;
+  const liveCategories=availableLiveCategories();
+  return `<section class="section"><div class="section-head"><div><h2>🔴 NOW LIVE</h2><p>${selectedCharacter ? `${escapeHtml(selectedCharacter.name)} の現在LIVE中の配信` : selectedCategory ? `${escapeHtml(selectedCategory)} の現在LIVE中の配信` : 'いま見られるスト6配信'}</p></div>${selectedCharacter || state.liveCategoryFilter!=='all' ? '<button class="section-link" data-clear-live-filter>すべてのLIVE →</button>' : '<button class="section-link" data-go="upcoming">配信予定 →</button>'}</div><div class="filter-row"><button class="chip ${state.liveCategoryFilter==='all'?'active':''}" data-live-category="all">すべて</button>${liveCategories.map(category=>`<button class="chip ${state.liveCategoryFilter===category?'active':''}" data-live-category="${escapeHtml(category)}">${escapeHtml(liveCategoryLabel(category))}</button>`).join('')}${selectedCharacter ? `<button class="chip active" data-clear-char>◉ ${escapeHtml(selectedCharacter.name)}</button>` : ''}</div><div class="live-grid">${live.length?live.map(liveCard).join(''):'<div class="empty">現在LIVE中の配信はありません。</div>'}</div></section><section class="section"><div class="section-head"><div><h2>UPCOMING</h2><p>これから始まる配信</p></div><button class="section-link" data-go="upcoming">すべて見る →</button></div><div class="upcoming-grid">${upcoming.length?upcoming.map(upcomingCard).join(''):'<div class="empty">現在、配信予定はありません。</div>'}</div></section>`;
 }
 function upcomingPage(){
   const items=filteredUpcoming();
@@ -89,7 +116,7 @@ function favoritesPage(){
 function simplePage(title,body){ return `<section class="section"><div class="page-card"><h2>${title}</h2>${body}</div></section>`; }
 function render(){
   const app=$('#app');
-  const titles={home:'ホーム',upcoming:'配信予定',streamers:'配信者',characters:'キャラクター',favorites:'お気に入り',notice:'お知らせ',settings:'設定',help:'使い方'};
+  const titles={home:'配信中',upcoming:'配信予定',streamers:'配信者',characters:'キャラクター',favorites:'お気に入り',notice:'お知らせ',settings:'設定',help:'使い方'};
   $('#page-title').textContent=titles[state.view];
   if(state.view==='home') app.innerHTML=home();
   else if(state.view==='upcoming') app.innerHTML=upcomingPage();
@@ -103,12 +130,14 @@ function render(){
 }
 function bind(){
   document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>nav(b.dataset.go));
-  document.querySelectorAll('[data-upcoming-char]').forEach(b=>b.onclick=()=>{state.charFilter=b.dataset.upcomingChar; state.view='upcoming'; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view==='upcoming')); render();});
-  document.querySelectorAll('[data-clear-char]').forEach(b=>b.onclick=()=>{state.charFilter='all'; state.view='home'; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view==='home')); render();});
+  document.querySelectorAll('[data-live-category]').forEach(b=>b.onclick=()=>{state.liveCategoryFilter=b.dataset.liveCategory; render();});
+  document.querySelectorAll('[data-clear-live-filter]').forEach(b=>b.onclick=()=>{state.charFilter='all'; state.liveCategoryFilter='all'; state.view='home'; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view==='home')); render();});
+  document.querySelectorAll('[data-upcoming-char]').forEach(b=>b.onclick=()=>{state.charFilter=b.dataset.upcomingChar; state.liveCategoryFilter='all'; state.view='upcoming'; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view==='upcoming')); render();});
+  document.querySelectorAll('[data-clear-char]').forEach(b=>b.onclick=()=>{state.charFilter='all'; render();});
   document.querySelectorAll('[data-fav]').forEach(b=>b.onclick=e=>{e.stopPropagation();toggleFav(b.dataset.fav)});
   document.querySelectorAll('[data-open]').forEach(card=>card.onclick=()=>openStream(card.dataset.open));
   const clear=$('#clear-favs'); if(clear) clear.onclick=()=>{state.favorites=[];saveFavs();render();};
-  document.querySelectorAll('.character-card').forEach(card=>card.onclick=()=>{state.charFilter=card.dataset.character; state.view='home'; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view==='home')); render();});
+  document.querySelectorAll('.character-card').forEach(card=>card.onclick=()=>{state.charFilter=card.dataset.character; state.liveCategoryFilter='all'; state.view='home'; document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view==='home')); render();});
 }
 function openStream(id){ const all=[...streams(),...state.data.upcoming]; const s=all.find(x=>x.id===id); if(s) window.open(s.youtubeUrl,'_blank','noopener'); }
 function mapVideo(v){
@@ -118,7 +147,7 @@ function mapVideo(v){
     channelThumbnailUrl:v.channel_thumbnail_url || '',
     status:v.status, viewers:v.concurrent_viewers, title:v.title || '', youtubeUrl:`https://www.youtube.com/watch?v=${v.video_id}`,
     thumbnail:v.thumbnail_url || `https://i.ytimg.com/vi/${v.video_id}/hqdefault.jpg`, lp:v.lp, mr:v.mr,
-    scheduledStart:v.scheduled_start_time, actualStart:v.actual_start_time, actualEnd:v.actual_end_time
+    category:v.category || 'other', scheduledStart:v.scheduled_start_time, actualStart:v.actual_start_time, actualEnd:v.actual_end_time
   };
 }
 function mapStreamer(s){
