@@ -21,3 +21,6 @@ document.addEventListener('DOMContentLoaded', () => {
   applyOfficialCharacterImages();
   officialCharacterImageObserver.observe(document.body, { childList: true, subtree: true });
 });
+
+// Load the streamer page enhancement without changing the main app bundle.
+import('./streamers-page.js').catch((error) => console.error('Failed to load streamer page enhancement', error));
