@@ -24,13 +24,11 @@
         <button class="nav-item" data-view="settings"><span>⚙</span>設定</button>
         <button class="nav-item" data-view="help"><span>?</span>使い方</button>
       </nav>
-      <div class="sidebar-note">ログイン不要<br><span>お気に入りはこのブラウザに保存</span></div>
-      <div class="socials"><span>YT</span><span>TW</span><span>X</span></div>
     </aside>
     <main class="main-content">
       <header class="topbar">
         <div><p class="eyebrow">STREET FIGHTER 6 · STREAM HUB</p><h1 id="page-title">配信中</h1></div>
-        <div class="top-actions"><div class="timezone">◷ JST</div><label class="search"><span>⌕</span><input id="search-input" type="search" placeholder="配信者やキャラを検索" /></label></div>
+        <div class="top-actions"><div class="timezone" id="jst-clock" aria-label="現在時刻">◷ --:-- JST</div><label class="search"><span>⌕</span><input id="search-input" type="search" placeholder="配信者やキャラを検索" /></label></div>
       </header>
       <div id="app" aria-live="polite"></div>
     </main>
@@ -41,6 +39,22 @@
     const SF6_API_BASE = window.SF6_API_BASE || 'https://sf6-live-researcher.u-ambers.workers.dev';
     const FAVORITES_KEY = 'sf6-live-favorites';
     let favoriteRenderToken = 0;
+
+    function updateJstClock() {
+      const clock = document.querySelector('#jst-clock');
+      if (!clock) return;
+      const now = new Date();
+      const time = new Intl.DateTimeFormat('ja-JP', {
+        timeZone: 'Asia/Tokyo',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).format(now);
+      clock.textContent = `◷ ${time} JST`;
+    }
+    updateJstClock();
+    setInterval(updateJstClock, 1000);
 
     function escapeFavoriteHtml(value) {
       return String(value ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));
