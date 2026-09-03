@@ -1,0 +1,71 @@
+name: Apply streamer pagination
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    if: github.actor == 'spica-neruka'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update pagination
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          p = Path('js/app.js')
+          s = p.read_text(encoding='utf-8')
+
+          old_state = "state={data:{characters:CHARACTER_ROSTER,streams:[],upcoming:[],streamers:[]},view:'home',query:'',charFilter:'all',liveCategoryFilter:'all',favorites:JSON.parse(localStorage.getItem('sf6-live-favorites')||'[]')}"
+          new_state = "state={data:{characters:CHARACTER_ROSTER,streams:[],upcoming:[],streamers:[]},view:'home',query:'',charFilter:'all',liveCategoryFilter:'all',favorites:JSON.parse(localStorage.getItem('sf6-live-favorites')||'[]'),streamerPage:1,streamerPageSize:200,streamerTotal:0,streamerHasNextPage:false,streamerPages:{}}"
+          if old_state not in s:
+              raise SystemExit('state anchor not found')
+          s = s.replace(old_state, new_state, 1)
+
+          start = s.index('function streamersPage(){')
+          end = s.index('function charactersPage(){', start)
+          new_streamers = '''function streamersPage(){const items=state.data.streamers||[],liveByChannel=new Map(streams().filter(s=>s.status==='live').map(s=>[s.streamerId,s])),page=state.streamerPage,total=state.streamerTotal||items.length,totalPages=Math.max(1,Math.ceil(total/state.streamerPageSize));const pageButtons=Array.from({length:totalPages},(_,i)=>i+1).filter(n=>n===1||n===totalPages||Math.abs(n-page)<=1);let last=0;const pager=pageButtons.map(n=>{const gap=last&&n-last>1?'<span class="pagination-gap">…</span>':'';last=n;return `${gap}<button class="pagination-button ${n===page?'active':''}" data-streamer-page="${n}">${n}</button>`}).join('');return `<section class="section"><div class="section-head"><div><h2>配信者</h2><p>Cloudflare D1に登録されている配信者情報</p></div><span class="result-count">${total} streamers</span></div><div class="streamer-grid">${items.map(x=>{const live=liveByChannel.get(x.id);const targetUrl=live?.youtubeUrl||x.channelUrl;return `<article class="streamer-card ${live?'is-live':''}" data-streamer-channel="${esc(x.id)}" data-streamer-url="${esc(targetUrl)}"><div class="channel-avatar-wrap">${x.channelThumbnailUrl?`<img class="channel-icon" src="${esc(x.channelThumbnailUrl)}" alt="${esc(x.name)} のYouTubeチャンネルアイコン" loading="lazy" referrerpolicy="no-referrer">`:''}${live?'<span class="live-pill">● LIVE</span>':''}</div><div class="streamer-row"><strong>${esc(x.name)}</strong><button class="favorite ${isFav(x.id)?'on':''}" data-fav="${esc(x.id)}">${isFav(x.id)?'♥':'♡'}</button></div><div class="streamer-stats"><span><b>登録者</b>${x.subscriberCount!=null?Number(x.subscriberCount).toLocaleString():'--'}</span><span><b>カテゴリ</b>${esc(x.streamerCategoryLabel||x.streamerCategory||'--')}</span></div><small>${x.lp!=null?`LP ${esc(x.lp)}`:''}${x.mr!=null?` · MR ${esc(x.mr)}`:''}</small></article>`;}).join('')}</div>${totalPages>1?`<div class="pagination" aria-label="配信者ページ"><button class="pagination-button" data-streamer-page="${page-1}" ${page<=1?'disabled':''}>‹</button>${pager}<button class="pagination-button" data-streamer-page="${page+1}" ${page>=totalPages?'disabled':''}>›</button></div>`:''}</section>`;}\n'''
+          s = s[:start] + new_streamers + s[end:]
+
+          start = s.index('async function fetchStreamers(){')
+          end = s.index('async function loadApiData(){', start)
+          new_fetch = '''async function fetchStreamers(page=1){const offset=(page-1)*state.streamerPageSize;if(state.streamerPages[offset]){const cached=state.streamerPages[offset];state.data.streamers=cached.items;state.streamerPage=page;state.streamerTotal=cached.total;state.streamerHasNextPage=cached.hasNextPage;return;}try{const payload=await fetchJson(`${API_BASE}/api/streamers?limit=${state.streamerPageSize}&offset=${offset}&sort=subscribers_desc`);const items=(payload.items||[]).map(mapStreamer);state.streamerPages[offset]={items,total:Number(payload.total||0),hasNextPage:Boolean(payload.hasNextPage)};state.data.streamers=items;state.streamerPage=page;state.streamerTotal=Number(payload.total||0);state.streamerHasNextPage=Boolean(payload.hasNextPage);}catch(e){console.error('streamers fetch failed',e);state.data.streamers=[];state.streamerTotal=0;state.streamerHasNextPage=false;}}\nasync function changeStreamerPage(page){const totalPages=Math.max(1,Math.ceil((state.streamerTotal||0)/state.streamerPageSize));if(page<1||page>totalPages||page===state.streamerPage)return;await fetchStreamers(page);render();}\n'''
+          s = s[:start] + new_fetch + s[end:]
+
+          old_load = "async function loadApiData(){const [livePayload,upcomingPayload]=await Promise.all([fetchVideos('live'),fetchVideos('upcoming')]);await fetchStreamers();state.data.streams=(livePayload.items||[]).map(mapVideo).filter(v=>v.status==='live');state.data.upcoming=(upcomingPayload.items||[]).map(mapVideo).filter(v=>v.status==='upcoming');}"
+          new_load = "async function loadApiData(){const [livePayload,upcomingPayload]=await Promise.all([fetchVideos('live'),fetchVideos('upcoming')]);await fetchStreamers(1);state.data.streams=(livePayload.items||[]).map(mapVideo).filter(v=>v.status==='live');state.data.upcoming=(upcomingPayload.items||[]).map(mapVideo).filter(v=>v.status==='upcoming');}"
+          if old_load not in s:
+              raise SystemExit('loadApiData anchor not found')
+          s = s.replace(old_load, new_load, 1)
+
+          anchor = "document.querySelectorAll('[data-open]').forEach(card=>card.onclick=()=>openStream(card.dataset.open));"
+          replacement = anchor + "document.querySelectorAll('[data-streamer-page]').forEach(b=>b.onclick=()=>{if(!b.disabled)changeStreamerPage(Number(b.dataset.streamerPage));});"
+          if anchor not in s:
+              raise SystemExit('bind anchor not found')
+          s = s.replace(anchor, replacement, 1)
+
+          p.write_text(s, encoding='utf-8')
+
+          css = Path('css/style.css')
+          c = css.read_text(encoding='utf-8')
+          marker = '.pagination{'
+          if marker not in c:
+              c += '.pagination{display:flex;justify-content:center;align-items:center;gap:6px;margin-top:18px}.pagination-button{min-width:32px;height:32px;padding:0 9px;border:1px solid var(--line);background:#10141a;color:#858e9b;border-radius:7px;font-size:10px;font-weight:800;cursor:pointer}.pagination-button:hover:not(:disabled){border-color:#414956;color:#fff}.pagination-button.active{background:#e9edf2;color:#111;border-color:#e9edf2}.pagination-button:disabled{opacity:.35;cursor:default}.pagination-gap{color:#687180;font-size:10px;padding:0 2px}'
+              css.write_text(c, encoding='utf-8')
+
+          api = Path('../sf6-live-researcher/api-worker.js')
+          # API repo is not checked out here; update is performed separately.
+
+      - name: Commit frontend changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add js/app.js css/style.css
+          git diff --cached --quiet || git commit -m "feat: paginate streamer list by 200"
+          git push
