@@ -1,6 +1,12 @@
 .channel-avatar-wrap{position:relative}
-.channel-avatar-wrap .live-badge,.channel-avatar-wrap .favorite-status-badge{position:absolute;top:8px;left:8px;z-index:3;display:inline-flex;align-items:center;min-height:22px;padding:2px 7px;border-radius:6px;background:#ff3f55;color:#fff;font-size:11px;font-weight:800;letter-spacing:.08em;line-height:1}
-.channel-avatar-wrap .favorite-status-badge.upcoming{background:#d6b36a;color:#090b10}
+/* Favorites use their own single status badge. The generic streamer LIVE pseudo-element is disabled for these cards. */
+.channel-avatar-wrap .live-badge,.channel-avatar-wrap .favorite-status-badge{position:absolute;top:8px;left:8px;z-index:3;display:inline-flex;align-items:center;min-height:22px;padding:2px 7px;border-radius:6px;background:var(--live,#ff3f55);color:#fff;font-size:11px;font-weight:800;letter-spacing:.08em;line-height:1;box-shadow:0 2px 8px rgba(0,0,0,.35);pointer-events:none}
+.channel-avatar-wrap .favorite-status-badge.upcoming{background:var(--gold,#d6b36a);color:#090b10}
 .channel-avatar-wrap .favorite-status-badge.offline{background:rgba(8,10,15,.78);color:#c3c9d3;border:1px solid rgba(255,255,255,.12)}
+.streamer-card[data-favorite-channel]{transition:.18s ease}
+.streamer-card[data-favorite-channel]:hover{transform:translateY(-2px);border-color:#3b424e}
+.streamer-card[data-favorite-channel] .streamer-row strong{margin-top:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.streamer-card[data-favorite-channel] .favorite{flex:0 0 auto;padding:2px 0}
+.streamer-card[data-favorite-channel] .streamer-stats{margin-top:10px}
 .favorite-missing-note{margin:.35rem 0 0;color:#8e96a3;font-size:12px}
 .streamer-card[data-favorite-open]{cursor:pointer}
