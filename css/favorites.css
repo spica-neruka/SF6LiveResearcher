@@ -19,6 +19,8 @@
 .streamer-card:not([data-favorite-channel]){cursor:pointer}
 .streamer-card:not([data-favorite-channel]) .streamer-row strong{margin-top:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-/* Live cards: keep the same red top accent on the Favorites page as on the streamer cards. */
+/* Favorites: LIVE cards get the red top accent. The live page intentionally stays visually clean. */
 .stream-card{position:relative;overflow:hidden}
 .stream-card:has(.live-pill)::before{content:'';position:absolute;left:0;top:0;right:0;height:2px;background:var(--live,#ff3f55);z-index:5;pointer-events:none}
+.live-grid .stream-card::before{display:none}
+.live-grid .live-pill{display:none}
