@@ -8,6 +8,7 @@
   <title>SF6 LIVE — Street Fighter 6 Stream Hub</title>
   <link rel="stylesheet" href="./css/style.css" />
   <link rel="stylesheet" href="./css/character-assets.css" />
+  <link rel="stylesheet" href="./css/favorites.css" />
 </head>
 <body>
   <div class="app-shell">
@@ -60,8 +61,8 @@
 
     function favoriteStatusLabel(item) {
       if (item.status === 'live') return '<span class="live-badge">LIVE</span>';
-      if (item.status === 'upcoming') return '<span class="upcoming-time">配信予定</span>';
-      return '<span class="favorite-offline">OFFLINE</span>';
+      if (item.status === 'upcoming') return '<span class="favorite-status-badge upcoming">配信予定</span>';
+      return '<span class="favorite-status-badge offline">OFFLINE</span>';
     }
 
     function favoriteCard(item) {
