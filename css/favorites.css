@@ -1,0 +1,6 @@
+.channel-avatar-wrap{position:relative}
+.channel-avatar-wrap .live-badge,.channel-avatar-wrap .favorite-status-badge{position:absolute;top:8px;left:8px;z-index:3;display:inline-flex;align-items:center;min-height:22px;padding:2px 7px;border-radius:6px;background:#ff3f55;color:#fff;font-size:11px;font-weight:800;letter-spacing:.08em;line-height:1}
+.channel-avatar-wrap .favorite-status-badge.upcoming{background:#d6b36a;color:#090b10}
+.channel-avatar-wrap .favorite-status-badge.offline{background:rgba(8,10,15,.78);color:#c3c9d3;border:1px solid rgba(255,255,255,.12)}
+.favorite-missing-note{margin:.35rem 0 0;color:#8e96a3;font-size:12px}
+.streamer-card[data-favorite-open]{cursor:pointer}
