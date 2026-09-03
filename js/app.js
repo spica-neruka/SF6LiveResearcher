@@ -32,7 +32,7 @@ function mapStreamer(s){return {id:s.channel_id,name:s.sf6_player_name||s.channe
 async function fetchJson(url){const r=await fetch(url);if(!r.ok)throw new Error(`HTTP ${r.status}`);return r.json();}
 async function fetchVideos(status,limit=200){return fetchJson(`${API_BASE}/api/videos?status=${encodeURIComponent(status)}&limit=${limit}`);}
 async function fetchStreamers(){try{const payload=await fetchJson(`${API_BASE}/api/streamers?limit=1000`);state.data.streamers=(payload.items||[]).map(mapStreamer);}catch(e){console.error('streamers fetch failed',e);state.data.streamers=[];}}
-async function loadApiData(){const [allPayload,upcomingPayload]=await Promise.all([fetchVideos('all'),fetchVideos('upcoming')]);await fetchStreamers();state.data.streams=(allPayload.items||[]).map(mapVideo).filter(v=>v.status==='live');state.data.upcoming=(upcomingPayload.items||[]).map(mapVideo).filter(v=>v.status==='upcoming');}
+async function loadApiData(){const [livePayload,upcomingPayload]=await Promise.all([fetchVideos('live'),fetchVideos('upcoming')]);await fetchStreamers();state.data.streams=(livePayload.items||[]).map(mapVideo).filter(v=>v.status==='live');state.data.upcoming=(upcomingPayload.items||[]).map(mapVideo).filter(v=>v.status==='upcoming');}
 document.querySelectorAll('.nav-item').forEach(n=>n.onclick=()=>nav(n.dataset.view));
 const search=$('#search-input');if(search)search.oninput=()=>{state.query=search.value;render();};
 loadApiData().then(render).catch(e=>{console.error(e);render();});
