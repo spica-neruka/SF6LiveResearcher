@@ -10,3 +10,11 @@
 .streamer-card[data-favorite-channel] .streamer-stats{margin-top:10px}
 .favorite-missing-note{margin:.35rem 0 0;color:#8e96a3;font-size:12px}
 .streamer-card[data-favorite-open]{cursor:pointer}
+
+/* Streamer page status: app.js is the single renderer, so status is derived from the loaded live set. */
+.streamer-card:not([data-favorite-open]) .channel-avatar-wrap::before{content:'OFFLINE';position:absolute;left:8px;top:8px;z-index:10;display:inline-flex;align-items:center;min-height:22px;padding:2px 7px;border-radius:6px;background:rgba(8,10,15,.82);color:#c3c9d3;border:1px solid rgba(255,255,255,.12);font-size:11px;font-weight:800;letter-spacing:.08em;line-height:1;box-shadow:0 2px 8px rgba(0,0,0,.35);pointer-events:none}
+.streamer-card:not([data-favorite-open]).is-live .channel-avatar-wrap::before{content:'LIVE';background:var(--live,#ff3f55);color:#fff;border:0}
+.streamer-card:not([data-favorite-open]) .channel-avatar-wrap::after{content:none}
+.streamer-card:not([data-favorite-open]).is-live .channel-avatar-wrap::after{content:'';position:absolute;left:0;top:0;right:0;height:2px;background:var(--live,#ff3f55);z-index:9;pointer-events:none}
+.streamer-card:not([data-favorite-open]){cursor:pointer}
+.streamer-card:not([data-favorite-open]) .streamer-row strong{margin-top:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
