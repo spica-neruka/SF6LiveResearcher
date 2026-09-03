@@ -35,7 +35,7 @@
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
     const cards = items.length ? items.map(x => {
       const name = x.sf6_player_name || x.channel_title || x.channel_id;
-      return `<article class="streamer-card" data-streamer-channel="${escapeHtml(x.channel_id)}"><div class="channel-avatar-wrap">${icon(x.channel_thumbnail_url, name)}</div><div class="streamer-row"><strong>${escapeHtml(name)}</strong><button class="favorite ${isFavorite(x.channel_id) ? 'on' : ''}" data-streamer-fav="${escapeHtml(x.channel_id)}" aria-label="お気に入り">${isFavorite(x.channel_id) ? '♥' : '♡'}</button></div><div class="streamer-stats"><span><b>登録者</b>${x.subscriber_count != null ? Number(x.subscriber_count).toLocaleString() : '--'}</span><span><b>カテゴリ</b>${escapeHtml(label(x.streamer_category))}</span></div><small>${x.lp != null ? `LP ${escapeHtml(x.lp)}` : ''}${x.mr != null ? ` · MR ${escapeHtml(x.mr)}` : ''}</small></article>`;
+      return `<article class="streamer-card" data-streamer-channel="${escapeHtml(x.channel_id)}" role="link" tabindex="0" aria-label="${escapeHtml(name)} のYouTubeチャンネルを開く"><div class="channel-avatar-wrap">${icon(x.channel_thumbnail_url, name)}</div><div class="streamer-row"><strong>${escapeHtml(name)}</strong><button class="favorite ${isFavorite(x.channel_id) ? 'on' : ''}" data-streamer-fav="${escapeHtml(x.channel_id)}" aria-label="お気に入り">${isFavorite(x.channel_id) ? '♥' : '♡'}</button></div><div class="streamer-stats"><span><b>登録者</b>${x.subscriber_count != null ? Number(x.subscriber_count).toLocaleString() : '--'}</span><span><b>カテゴリ</b>${escapeHtml(label(x.streamer_category))}</span></div><small>${x.lp != null ? `LP ${escapeHtml(x.lp)}` : ''}${x.mr != null ? ` · MR ${escapeHtml(x.mr)}` : ''}</small></article>`;
     }).join('') : '<div class="empty">該当する配信者はいません。</div>';
     const categories = [['all', 'すべて'], ['pro_gamer', 'プロゲーマー'], ['vtuber', 'VTuber'], ['game_streamer', 'ゲーム配信者']];
     const pagination = totalPages > 1 ? `<div class="streamer-pagination"><button class="chip" data-streamer-page="prev" ${state.page === 0 ? 'disabled' : ''}>← 前へ</button><span>${state.page + 1} / ${totalPages} ページ</span><button class="chip" data-streamer-page="next" ${state.page >= totalPages - 1 ? 'disabled' : ''}>次へ →</button></div>` : '';
@@ -64,7 +64,16 @@
     const category = event.target.closest('[data-streamer-category]');
     if (category) { state.category = category.dataset.streamerCategory; state.page = 0; state.lastKey = ''; load(); return; }
     const page = event.target.closest('[data-streamer-page]');
-    if (page) { const totalPages = Math.max(1, Math.ceil(state.total / PAGE_SIZE)); if (page.dataset.streamerPage === 'prev') state.page = Math.max(0, state.page - 1); if (page.dataset.streamerPage === 'next') state.page = Math.min(totalPages - 1, state.page + 1); state.lastKey = ''; load(); }
+    if (page) { const totalPages = Math.max(1, Math.ceil(state.total / PAGE_SIZE)); if (page.dataset.streamerPage === 'prev') state.page = Math.max(0, state.page - 1); if (page.dataset.streamerPage === 'next') state.page = Math.min(totalPages - 1, state.page + 1); state.lastKey = ''; load(); return; }
+    const card = event.target.closest('[data-streamer-channel]');
+    if (card) { window.open(`https://www.youtube.com/channel/${encodeURIComponent(card.dataset.streamerChannel)}`, '_blank', 'noopener'); }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (!isStreamerPage() || (event.key !== 'Enter' && event.key !== ' ')) return;
+    const card = event.target.closest('[data-streamer-channel]');
+    if (!card || event.target.closest('[data-streamer-fav]')) return;
+    event.preventDefault();
+    window.open(`https://www.youtube.com/channel/${encodeURIComponent(card.dataset.streamerChannel)}`, '_blank', 'noopener');
   });
   const observer = new MutationObserver(() => { if (isStreamerPage()) setTimeout(load, 0); else state.lastKey = ''; });
   observer.observe(document.body, { childList: true, subtree: true });
