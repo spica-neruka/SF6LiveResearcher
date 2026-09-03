@@ -41,6 +41,22 @@
     function favoriteChannelIcon(url, name) {
       return url ? `<img class="channel-icon" src="${String(url).replace(/&/g, '&amp;').replace(/"/g, '&quot;')}" alt="${String(name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')} のYouTubeチャンネルアイコン" loading="lazy" referrerpolicy="no-referrer">` : '';
     }
+    async function fetchAllFavoriteStreamers() {
+      const pageSize = 100;
+      const firstResponse = await fetch(`${SF6_API_BASE}/api/streamers?limit=${pageSize}&offset=0`, { cache: 'no-store' });
+      if (!firstResponse.ok) throw new Error(`streamers API ${firstResponse.status}`);
+      const firstPayload = await firstResponse.json();
+      const items = [...(firstPayload.items || [])];
+      const total = Number(firstPayload.total || items.length);
+      for (let offset = pageSize; offset < total; offset += pageSize) {
+        const response = await fetch(`${SF6_API_BASE}/api/streamers?limit=${pageSize}&offset=${offset}`, { cache: 'no-store' });
+        if (!response.ok) throw new Error(`streamers API ${response.status}`);
+        const payload = await response.json();
+        items.push(...(payload.items || []));
+        if (!payload.items?.length) break;
+      }
+      return items;
+    }
     async function renderOfflineFavorites() {
       const favorites = JSON.parse(localStorage.getItem('sf6-live-favorites') || '[]');
       const app = document.querySelector('#app');
@@ -50,12 +66,10 @@
         return;
       }
       try {
-        const [streamersResponse, liveResponse] = await Promise.all([
-          fetch(`${SF6_API_BASE}/api/streamers?limit=1000`, { cache: 'no-store' }),
+        const [streamers, liveResponse] = await Promise.all([
+          fetchAllFavoriteStreamers(),
           fetch(`${SF6_API_BASE}/api/videos?status=live&limit=200`, { cache: 'no-store' })
         ]);
-        if (!streamersResponse.ok) throw new Error(`streamers API ${streamersResponse.status}`);
-        const streamers = (await streamersResponse.json()).items || [];
         const liveItems = liveResponse.ok ? ((await liveResponse.json()).items || []) : [];
         const liveByChannel = new Map();
         for (const video of liveItems) if (video.channel_id && !liveByChannel.has(video.channel_id)) liveByChannel.set(video.channel_id, video);
@@ -99,7 +113,7 @@
       const name = card.querySelector('.streamer-row strong')?.textContent?.trim();
       if (!name) return;
       try {
-        const response = await fetch(`${SF6_API_BASE}/api/streamers?limit=1000`, { cache: 'no-store' });
+        const response = await fetch(`${SF6_API_BASE}/api/streamers?limit=100`, { cache: 'no-store' });
         if (!response.ok) throw new Error(`streamers API ${response.status}`);
         const streamers = (await response.json()).items || [];
         const streamer = streamers.find(x => (x.sf6_player_name || x.channel_title || x.channel_id) === name);
