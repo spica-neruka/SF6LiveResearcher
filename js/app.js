@@ -1,5 +1,7 @@
 const API_BASE = window.SF6_API_BASE || 'https://sf6-live-researcher.u-ambers.workers.dev';
 const FAVORITES_KEY = 'sf6-live-favorites';
+const API_PAGE_SIZE = 200;
+const STREAMER_DISPLAY_STEP = 24;
 const CHARACTERS = [
   ['リュウ', 'ryu'], ['ルーク', 'luke'], ['ジェイミー', 'jamie'], ['春麗', 'chunli'],
   ['ガイル', 'guile'], ['キンバリー', 'kimberly'], ['ジュリ', 'juri'], ['ケン', 'ken'],
@@ -17,13 +19,12 @@ const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const normalize = value => String(value ?? '').normalize('NFKC').toLocaleLowerCase().trim();
 const characterId = name => CHARACTERS.find(c => normalize(c.name) === normalize(name))?.id || normalize(name);
-const resource = () => ({ items: [], loaded: false, busy: false, error: '', fetchedAt: null, cursor: null, hasNext: false, offset: 0, token: 0, controller: null, append: false });
+const resource = () => ({ items: [], loaded: false, busy: false, error: '', fetchedAt: null, cursor: null, hasNext: false, offset: 0, token: 0, controller: null, append: false, displayLimit: STREAMER_DISPLAY_STEP });
 const state = {
   view: 'home', queries: {}, character: 'all', category: 'all', sort: 'viewers',
   streamerCategory: 'all', affiliation: 'all', favoriteIds: readFavorites(),
   live: resource(), upcoming: resource(), streamers: resource(), favorites: resource(),
 };
-let searchTimer;
 
 function readFavorites() {
   try {
@@ -57,7 +58,7 @@ function mapVideo(v) {
 }
 function mapStreamer(s) {
   return {
-    id: s.channel_id, name: s.sf6_player_name || s.channel_title || s.channel_id,
+    id: s.channel_id, name: s.sf6_player_name || s.channel_title || s.channel_id, channelTitle: s.channel_title || '',
     image: safeImage(s.channel_thumbnail_url), subscribers: s.subscriber_count,
     category: s.streamer_category, affiliation: s.affiliation_type, organization: s.organization,
     tags: Array.isArray(s.streamer_tags) ? s.streamer_tags : [], lp: s.lp, mr: s.mr,
@@ -99,7 +100,7 @@ async function load(key, { append = false, clear = false } = {}) {
   const token = data.token;
   const controller = new AbortController();
   data.controller = controller;
-  if (clear) Object.assign(data, { items: [], loaded: false, fetchedAt: null, cursor: null, hasNext: false, offset: 0 });
+  if (clear) Object.assign(data, { items: [], loaded: false, fetchedAt: null, cursor: null, hasNext: false, offset: 0, displayLimit: STREAMER_DISPLAY_STEP });
   data.busy = true;
   data.error = '';
   data.append = append;
@@ -111,7 +112,7 @@ async function load(key, { append = false, clear = false } = {}) {
       items = await favoriteProfiles([...state.favoriteIds], controller.signal);
       payload = { items, hasNextPage: false };
     } else {
-      const params = new URLSearchParams({ limit: key === 'streamers' ? '24' : '200' });
+      const params = new URLSearchParams({ limit: String(API_PAGE_SIZE) });
       if (append) {
         if (data.cursor) params.set('cursor', data.cursor);
         else params.set('offset', String(data.offset));
@@ -120,7 +121,6 @@ async function load(key, { append = false, clear = false } = {}) {
         params.set('sort', 'subscribers_desc');
         if (state.streamerCategory !== 'all') params.set('category', state.streamerCategory);
         if (state.affiliation !== 'all') params.set('affiliation_type', state.affiliation);
-        if ((state.queries.streamers || '').trim()) params.set('q', state.queries.streamers.trim());
       } else {
         params.set('status', key === 'live' ? 'live' : 'upcoming');
         params.set('sort', key === 'live' ? state.sort : 'scheduled');
@@ -128,22 +128,11 @@ async function load(key, { append = false, clear = false } = {}) {
       payload = await getJson(key === 'streamers' ? '/api/streamers' : '/api/videos', params, controller.signal);
       if (!Array.isArray(payload.items)) throw new Error('Unexpected list response');
       items = payload.items.map(key === 'streamers' ? mapStreamer : mapVideo);
-      if (key === 'streamers' && items.length) {
-        // Status lookup covers this page, even when its live video is not loaded.
-        try {
-          const profiles = new Map((await favoriteProfiles(items.map(item => item.id), controller.signal)).map(item => [item.id, item]));
-          items = items.map(item => ({ ...item, ...(profiles.has(item.id) ? {
-            status: profiles.get(item.id).status, videoId: profiles.get(item.id).videoId, scheduled: profiles.get(item.id).scheduled,
-          } : { status: 'unknown' }) }));
-        } catch (error) {
-          if (error.name === 'AbortError') throw error;
-          items = items.map(item => ({ ...item, status: 'unknown' }));
-        }
-      }
     }
     if (data.token !== token) return;
     const combined = append ? [...data.items, ...items] : items;
     data.items = [...new Map(combined.map(item => [item.id, item])).values()];
+    if (key === 'streamers') data.displayLimit = append ? data.displayLimit + STREAMER_DISPLAY_STEP : STREAMER_DISPLAY_STEP;
     data.offset = (append ? data.offset : 0) + payload.items.length;
     data.cursor = payload.nextCursor || null;
     data.hasNext = Boolean(payload.hasNextPage) && payload.items.length > 0;
@@ -160,7 +149,8 @@ async function load(key, { append = false, clear = false } = {}) {
 }
 function ensure(key) { if (!state[key].loaded && !state[key].busy && !state[key].error) void load(key); }
 function query(view = state.view) { return normalize(state.queries[view] || ''); }
-function matches(item) { return !query() || normalize(`${item.name || ''} ${item.title || ''} ${(item.characters || []).join(' ')}`).includes(query()); }
+function matches(item) { return !query() || normalize(`${item.name || ''} ${item.channelTitle || ''} ${item.title || ''} ${(item.characters || []).join(' ')}`).includes(query()); }
+function filteredStreamers() { return state.streamers.items.filter(matches); }
 function matchesCharacter(item, id = state.character) { return id === 'all' || item.characters.some(name => characterId(name) === id); }
 function filteredVideos(key) {
   return state[key].items.filter(item => matches(item) && matchesCharacter(item) && (key !== 'live' || state.category === 'all' || item.category === state.category))
@@ -187,10 +177,20 @@ function videoCard(item, upcoming = false) {
       ${upcoming ? '<span>配信予定</span>' : `<span>${esc(LIVE_CATEGORIES[item.category] || 'その他')}</span>${item.viewers != null ? `<span>${Number(item.viewers).toLocaleString()}人が視聴中</span>` : ''}`}</div>
     </div></article>`;
 }
-function streamerCard(item) {
+function streamerStatus(item) {
+  // Favorites have explicit status; directory cards reuse the shared video lists.
+  if (item.status) return item;
   const knownLive = state.live.items.find(video => video.channelId === item.id);
-  const status = item.status || (knownLive ? 'live' : 'unknown');
-  const videoId = item.videoId || knownLive?.id;
+  if (knownLive) return { ...item, status: 'live', videoId: knownLive.id };
+  const knownUpcoming = state.upcoming.items.filter(video => video.channelId === item.id)
+    .sort((a, b) => timeValue(a.scheduled, Infinity) - timeValue(b.scheduled, Infinity))[0];
+  if (knownUpcoming) return { ...item, status: 'upcoming', videoId: knownUpcoming.id, scheduled: knownUpcoming.scheduled };
+  const complete = ['live', 'upcoming'].every(key => state[key].loaded && !state[key].hasNext && !state[key].error && !state[key].busy);
+  return { ...item, status: complete ? 'offline' : 'unknown' };
+}
+function streamerCard(profile) {
+  const item = streamerStatus(profile);
+  const { status, videoId } = item;
   const url = ['live', 'upcoming'].includes(status) && videoId ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}` : `https://www.youtube.com/channel/${encodeURIComponent(item.id)}`;
   const label = { live: 'LIVE', upcoming: '配信予定', offline: 'オフライン', unknown: '状況未取得', missing: '情報なし' }[status] || '状況未取得';
   return `<article class="streamer-card ${status === 'live' ? 'is-live' : ''}" data-channel-id="${esc(item.id)}">
@@ -222,7 +222,8 @@ function emptyMessage(key, filtered, noun) {
 }
 function loadMore(key) {
   const data = state[key];
-  return data.hasNext ? button(data.busy ? '読み込み中…' : 'もっと見る', `data-load-more="${key}" ${data.busy ? 'disabled' : ''}`, 'load-more') : '';
+  const buffered = key === 'streamers' && filteredStreamers().length > data.displayLimit;
+  return buffered || data.hasNext ? button(data.busy ? '読み込み中…' : 'もっと見る', `data-load-more="${key}" ${data.busy ? 'disabled' : ''}`, 'load-more') : '';
 }
 function characterSelect() {
   return `<label class="filter-control">キャラクター<select data-character-select><option value="all">すべてのキャラクター</option>${CHARACTERS.map(c => `<option value="${c.id}" ${state.character === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}</select></label>`;
@@ -251,12 +252,15 @@ function videosPage(key) {
 }
 function streamersPage() {
   const data = state.streamers;
+  const matches = filteredStreamers();
+  const items = matches.slice(0, data.displayLimit);
   const filters = Boolean(query()) || state.streamerCategory !== 'all' || state.affiliation !== 'all';
-  return `<section class="section" aria-busy="${data.busy}">${sectionHead('配信者', 'スト6の配信者を探して、お気に入りを見つけよう。', countLabel(data, data.items.length))}
+  return `<section class="section" aria-busy="${data.busy}">${sectionHead('配信者', 'スト6の配信者を探して、お気に入りを見つけよう。', countLabel(data, items.length))}
     <div class="filter-controls"><label class="filter-control">配信者カテゴリ<select data-streamer-category><option value="all">すべて</option>${Object.entries(CATEGORIES).map(([id, label]) => `<option value="${id}" ${state.streamerCategory === id ? 'selected' : ''}>${label}</option>`).join('')}</select></label>
     <label class="filter-control">活動形態<select data-affiliation><option value="all">すべて</option><option value="corporate" ${state.affiliation === 'corporate' ? 'selected' : ''}>企業勢</option><option value="independent" ${state.affiliation === 'independent' ? 'selected' : ''}>個人勢</option></select></label>${filters ? button('条件をクリア', 'data-reset', 'text-button') : ''}</div>
-    ${stateNotice('streamers')}${data.items.some(item => item.status === 'unknown') ? '<p class="state-message">一部の配信状況を取得できませんでした。「更新」で再取得できます。</p>' : ''}
-    ${data.items.length ? `<div class="streamer-grid">${data.items.map(streamerCard).join('')}</div>` : emptyMessage('streamers', filters, '配信者')}${loadMore('streamers')}
+    <p class="search-scope">キーワード検索は取得済みの${data.items.length}件が対象です。${data.hasNext ? '未取得の配信者も探す場合は「もっと見る」で続きを取得してください。' : ''}</p>
+    ${stateNotice('streamers')}${stateNotice('live')}${stateNotice('upcoming')}${items.some(item => streamerStatus(item).status === 'unknown') ? '<p class="state-message">配信状況は取得済みの配信情報から表示しています。一覧の取得が完了していない場合は「状況未取得」と表示します。</p>' : ''}
+    ${items.length ? `<div class="streamer-grid">${items.map(streamerCard).join('')}</div>` : emptyMessage('streamers', filters, '配信者')}${loadMore('streamers')}
   </section>`;
 }
 function favoritesPage() {
@@ -283,13 +287,14 @@ function explorePage() {
 function infoPage() {
   if (state.view === 'settings') return `<section class="page-card"><h2>お気に入りの保存</h2><p>お気に入りはこのブラウザに保存されます。ログインは不要です。別の端末やブラウザとは共有されません。</p><p>ブラウザのサイトデータを削除すると、お気に入りも消えます。</p>${button('お気に入りを確認する', 'data-go="favorites"')}</section>`;
   if (state.view === 'notice') return `<section class="page-card"><h2>お知らせ</h2><div class="notice"><strong>2026/09/04</strong><p>スマホでの検索、配信者の絞り込み、お気に入りの配信状況表示を改善しました。</p></div><div class="notice"><strong>2026/09/03</strong><p>配信カテゴリによる絞り込みに対応しました。</p></div><div class="notice"><strong>2026/09/02</strong><p>配信者情報を定期的に更新し、より新しい情報を表示できるようにしています。</p></div><div class="notice"><strong>2026/09/01</strong><p>SF6 LIVE RESEARCHERを公開しました。</p></div></section>`;
-  return `<section class="page-card"><h2>使い方</h2><h3>見たい配信を探す</h3><p>配信中・配信予定では、タイトル、配信者名、キャラクターで検索できます。キャラクターとカテゴリを組み合わせて絞り込めます。配信者ページでは、一覧の続きも含めて名前を検索します。</p><h3>配信を見る</h3><p>サムネイルやタイトルを選ぶと、YouTubeを新しいタブで開きます。キーボードではTabキーでリンクを選び、Enterキーで開けます。</p><h3>お気に入り</h3><p>カードの♡で配信者を登録できます。♥で解除できます。オフラインの配信者も表示され、配信予定があれば開始時刻を確認できます。</p><h3>表示情報について</h3><p>YouTubeの公開情報を自動収集しています。実際の配信状況や視聴者数とは時間差があります。キャラクター情報は配信タイトルなどから推定するため、実際の使用キャラクターと異なる場合があります。</p><p>最終取得は、この画面で情報を受け取った時刻です。情報は最大5分程度キャッシュされ、収集間隔による遅れもあります。「更新」を押してもすぐに変わらない場合があります。開始予定の日時は日本時間（JST）です。</p></section>`;
+  return `<section class="page-card"><h2>使い方</h2><h3>見たい配信を探す</h3><p>配信中・配信予定では、タイトル、配信者名、キャラクターで検索できます。キャラクターとカテゴリを組み合わせて絞り込めます。配信者ページのキーワード検索は、取得済みの配信者名・チャンネル名を絞り込みます。未取得の配信者も探す場合は「もっと見る」で続きを取得してください。</p><h3>配信を見る</h3><p>サムネイルやタイトルを選ぶと、YouTubeを新しいタブで開きます。キーボードではTabキーでリンクを選び、Enterキーで開けます。</p><h3>お気に入り</h3><p>カードの♡で配信者を登録できます。♥で解除できます。オフラインの配信者も表示され、配信予定があれば開始時刻を確認できます。</p><h3>表示情報について</h3><p>YouTubeの公開情報を自動収集しています。実際の配信状況や視聴者数とは時間差があります。キャラクター情報は配信タイトルなどから推定するため、実際の使用キャラクターと異なる場合があります。</p><p>最終取得は、この画面で情報を受け取った時刻です。情報は最大5分程度キャッシュされ、収集間隔による遅れもあります。「更新」を押してもすぐに変わらない場合があります。開始予定の日時は日本時間（JST）です。</p></section>`;
 }
 function visibleResources() {
   if (state.view === 'home') return ['live'];
   if (state.view === 'upcoming') return ['upcoming'];
   if (state.view === 'characters') return ['live', 'upcoming'];
-  if (state.view === 'streamers' || state.view === 'favorites') return [state.view];
+  if (state.view === 'streamers') return ['streamers', 'live', 'upcoming'];
+  if (state.view === 'favorites') return ['favorites'];
   return [];
 }
 function focusKey(element) {
@@ -314,7 +319,7 @@ function render() {
   $('#search-input').placeholder = searchable ? searchText : '配信中・配信者ページなどで検索できます';
   $('#search-input').value = state.queries[state.view] || '';
   $('#search-label').textContent = searchText;
-  $('#search-hint').textContent = state.view === 'streamers' ? '一覧の続きも含めて配信者名・チャンネル名を検索します。' : 'この画面の読み込み済みの一覧を検索します。';
+  $('#search-hint').textContent = state.view === 'streamers' ? '取得済みの配信者名・チャンネル名を検索します。検索による追加取得は行いません。' : 'この画面の読み込み済みの一覧を検索します。';
   const keys = visibleResources();
   const times = keys.map(key => state[key].fetchedAt).filter(Boolean);
   $('#last-fetched').textContent = times.length ? `最終取得 ${formatDate(Math.min(...times))} JST` : '最終取得: —';
@@ -331,8 +336,6 @@ function render() {
 }
 function navigate(view, { preserveCharacter = false } = {}) {
   if (!TITLES[view]) return;
-  clearTimeout(searchTimer);
-  if (state.view === 'streamers' && state.streamers.busy) cancelRequest('streamers');
   state.view = view;
   if (!preserveCharacter) { state.character = 'all'; state.category = 'all'; }
   render();
@@ -344,8 +347,14 @@ function resetFilters() {
   state.queries[state.view] = '';
   state.character = 'all';
   state.category = 'all';
-  if (state.view === 'streamers') { state.streamerCategory = 'all'; state.affiliation = 'all'; clearTimeout(searchTimer); void load('streamers', { clear: true }); }
-  else render();
+  if (state.view === 'streamers') {
+    const changedServerFilters = state.streamerCategory !== 'all' || state.affiliation !== 'all';
+    state.streamerCategory = 'all';
+    state.affiliation = 'all';
+    state.streamers.displayLimit = STREAMER_DISPLAY_STEP;
+    if (changedServerFilters) return void load('streamers', { clear: true });
+  }
+  render();
 }
 function toggleFavorite(id) {
   const selected = state.favoriteIds.includes(id);
@@ -365,7 +374,14 @@ document.addEventListener('click', event => {
   if (control.matches('.nav-item')) return navigate(control.dataset.view);
   if (control.hasAttribute('data-go')) return navigate(control.dataset.go);
   if (control.hasAttribute('data-fav')) return toggleFavorite(control.dataset.fav);
-  if (control.hasAttribute('data-load-more')) return void load(control.dataset.loadMore, { append: true });
+  if (control.hasAttribute('data-load-more')) {
+    const key = control.dataset.loadMore;
+    if (key === 'streamers' && filteredStreamers().length > state.streamers.displayLimit) {
+      state.streamers.displayLimit = Math.min(state.streamers.displayLimit + STREAMER_DISPLAY_STEP, filteredStreamers().length);
+      return render();
+    }
+    return void load(key, { append: true });
+  }
   if (control.hasAttribute('data-retry')) return void load(control.dataset.retry, { append: state[control.dataset.retry].append });
   if (control.hasAttribute('data-reset')) return resetFilters();
   if (control.hasAttribute('data-live-category')) { state.category = control.dataset.liveCategory; render(); }
@@ -376,18 +392,13 @@ $('#app').addEventListener('change', event => {
   const control = event.target;
   if (control.hasAttribute('data-character-select')) { state.character = control.value; render(); if (state.character !== 'all') { ensure('live'); ensure('upcoming'); } }
   if (control.hasAttribute('data-sort')) { state.sort = control.value; void load('live', { clear: true }); }
-  if (control.hasAttribute('data-streamer-category')) { state.streamerCategory = control.value; clearTimeout(searchTimer); void load('streamers', { clear: true }); }
-  if (control.hasAttribute('data-affiliation')) { state.affiliation = control.value; clearTimeout(searchTimer); void load('streamers', { clear: true }); }
+  if (control.hasAttribute('data-streamer-category')) { state.streamerCategory = control.value; void load('streamers', { clear: true }); }
+  if (control.hasAttribute('data-affiliation')) { state.affiliation = control.value; void load('streamers', { clear: true }); }
 });
 $('#search-input').addEventListener('input', event => {
   state.queries[state.view] = event.target.value;
-  if (state.view === 'streamers') {
-    clearTimeout(searchTimer);
-    cancelRequest('streamers');
-    Object.assign(state.streamers, { items: [], loaded: false, busy: true, error: '', fetchedAt: null });
-    render();
-    searchTimer = setTimeout(() => { if (state.view === 'streamers') void load('streamers', { clear: true }); }, 250);
-  } else render();
+  if (state.view === 'streamers') state.streamers.displayLimit = STREAMER_DISPLAY_STEP;
+  render();
 });
 $('#refresh-button').addEventListener('click', () => { visibleResources().forEach(key => void load(key)); });
 window.addEventListener('storage', event => {

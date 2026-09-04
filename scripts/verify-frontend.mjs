@@ -34,6 +34,11 @@ let failStreamers = false;
 let failFavorites = false;
 let emptyLive = false;
 let legacyPagination = false;
+let largeDirectory = false;
+const largeStreamers = [...streamers, ...Array.from({ length: 197 }, (_, index) => ({
+  channel_id: `extra-${index}`, channel_title: index === 196 ? '取得済み末尾のチャンネル' : `配信者 ${index}`,
+  sf6_player_name: `Player ${index}`, streamer_category: 'game_streamer', channel_thumbnail_url: art,
+})), { channel_id: 'next-channel', channel_title: '次の200件の配信者', channel_thumbnail_url: art }];
 async function setupPage(viewport = { width: 1440, height: 1000 }, stored = ['c3', 'c4', 'c1']) {
   const page = await browser.newPage({ viewport, locale: 'ja-JP' });
   page.on('pageerror', error => errors.push(error.message));
@@ -47,19 +52,23 @@ async function setupPage(viewport = { width: 1440, height: 1000 }, stored = ['c3
       assert.equal(url.hostname, 'frontend.test');
       requests.push(url);
       if (url.pathname === '/api/videos') {
+        assert.equal(url.searchParams.get('limit'), '200');
+        assert.equal(url.searchParams.has('q'), false);
         const isLive = url.searchParams.get('status') === 'live';
         if (isLive && failLive) return route.fulfill({ status: 503, json: { error: 'test failure' } });
         return route.fulfill({ json: { items: isLive ? (emptyLive ? [] : live) : upcoming, total: null, hasNextPage: false, nextCursor: null } });
       }
       if (url.pathname === '/api/streamers') {
+        assert.equal(url.searchParams.get('limit'), '200', 'All directory pages request 200 rows');
+        assert.equal(url.searchParams.has('q'), false, 'Keyword must never be sent to the API');
         if (failStreamers) return route.fulfill({ status: 503, json: { error: 'test failure' } });
-        const q = url.searchParams.get('q') || '';
         const category = url.searchParams.get('category');
         const affiliation = url.searchParams.get('affiliation_type');
-        const filtered = streamers.filter(item => (!q || `${item.channel_title} ${item.sf6_player_name || ''}`.includes(q)) && (!category || item.streamer_category === category) && (!affiliation || item.affiliation_type === affiliation));
+        const filtered = (largeDirectory ? largeStreamers : streamers).filter(item => (!category || item.streamer_category === category) && (!affiliation || item.affiliation_type === affiliation));
         const next = url.searchParams.has('cursor') || Number(url.searchParams.get('offset')) > 0;
-        const hasNextPage = !next && !q && !category && !affiliation;
-        return route.fulfill({ json: { items: hasNextPage ? filtered.slice(0, 2) : next ? filtered.slice(2) : filtered, total: null, hasNextPage, ...(legacyPagination ? {} : { nextCursor: hasNextPage ? 'streamer-next' : null }) } });
+        const hasNextPage = !next && !category && !affiliation;
+        const size = largeDirectory ? 200 : 2;
+        return route.fulfill({ json: { items: hasNextPage ? filtered.slice(0, size) : next ? filtered.slice(size) : filtered, total: null, hasNextPage, ...(legacyPagination ? {} : { nextCursor: hasNextPage ? 'streamer-next' : null }) } });
       }
       if (url.pathname === '/api/favorites') {
         if (failFavorites) return route.fulfill({ status: 503, json: { error: 'test failure' } });
@@ -87,6 +96,12 @@ try {
   await waitCards(page, '.live-grid .stream-card', 2);
   assert.equal(requests.filter(url => url.pathname === '/api/streamers').length, 0, 'Initial live view must not wait for streamer directory');
   await page.screenshot({ path: path.join(output, 'desktop-live.png'), fullPage: true });
+  const initialRequests = requests.length;
+  await page.locator('#search-input').fill('ジュリ');
+  await waitCards(page, '.stream-card', 1);
+  await page.locator('#search-input').fill('');
+  await waitCards(page, '.stream-card', 2);
+  assert.equal(requests.length, initialRequests, 'Live keyword search is local');
   assert.equal(await page.locator('.stream-card').first().getAttribute('data-video-id'), 'v2');
   await page.locator('[data-character-select]').selectOption('juri');
   await waitCards(page, '.live-grid .stream-card', 1);
@@ -126,11 +141,22 @@ try {
   const cursorRequest = requests.filter(url => url.pathname === '/api/streamers').at(-1);
   assert.equal(cursorRequest.searchParams.get('cursor'), 'streamer-next');
   assert.equal(cursorRequest.searchParams.has('offset'), false);
+  assert.equal(requests.filter(url => url.pathname === '/api/favorites').length, 0, 'Directory reuses videos instead of looking up favorites');
+  const beforeSearch = requests.length;
   await page.locator('#search-input').fill('週末');
   await waitCards(page, '.streamer-grid .streamer-card', 1);
-  assert.equal(requests.filter(url => url.pathname === '/api/streamers').at(-1).searchParams.get('q'), '週末');
+  assert.equal(await page.locator('.status-badge').getAttribute('data-status'), 'upcoming');
+  await page.waitForTimeout(400); // Catch the old delayed server-search regression.
+  assert.equal(requests.length, beforeSearch, 'Directory keyword search does not issue any API requests');
   await page.locator('[data-reset]').click();
-  await waitCards(page, '.streamer-card', 2);
+  await waitCards(page, '.streamer-card', 3);
+  assert.equal(requests.length, beforeSearch, 'Clearing only the keyword reuses all loaded pages');
+  await page.locator('#search-input').fill('蒼いゲーム部屋');
+  await waitCards(page, '.streamer-card', 1);
+  assert.match(await page.locator('.streamer-name').innerText(), /Aoi/);
+  await page.locator('#search-input').fill('');
+  await waitCards(page, '.streamer-card', 3);
+  assert.equal(requests.length, beforeSearch, 'Channel name is searchable even when the card uses a player name');
   await page.locator('[data-streamer-category]').selectOption('pro_gamer');
   await waitCards(page, '.streamer-card', 1);
   assert.equal(await page.locator('[data-streamer-category]').inputValue(), 'pro_gamer');
@@ -157,6 +183,12 @@ try {
   assert.match(favoriteText[1], /9\/5|9月5日/);
   assert.match(favoriteText[2], /お休み/);
   assert.equal(await page.locator('.favorite-scheduled').isVisible(), true);
+  const beforeFavoriteSearch = requests.length;
+  await page.locator('#search-input').fill('週末');
+  await waitCards(page, '.streamer-card', 1);
+  await page.locator('#search-input').fill('');
+  await waitCards(page, '.streamer-card', 3);
+  assert.equal(requests.length, beforeFavoriteSearch, 'Favorites keyword search is local');
   await page.screenshot({ path: path.join(output, 'desktop-favorites.png'), fullPage: true });
   assert.equal(await page.locator('.streamer-card a[href*="watch?v=v1"]').count() > 0, true);
   await page.locator('.streamer-card').first().locator('.favorite').click();
@@ -204,6 +236,9 @@ try {
   await failed.waitForFunction(() => /失敗|取得でき|読み込め/.test(document.getElementById('app').textContent));
   assert.equal(await failed.locator('.stream-card').count(), 0);
   assert.doesNotMatch(await failed.locator('#app').innerText(), /現在LIVE中の配信はありません/);
+  await navigate(failed, 'streamers');
+  await waitCards(failed, '.streamer-card', 2);
+  assert.equal(await failed.locator('[data-channel-id="c1"] .status-badge').getAttribute('data-status'), 'unknown', 'Missing shared live data must not imply offline');
   failLive = false;
   await failed.close();
   legacyPagination = true;
@@ -215,6 +250,46 @@ try {
   assert.equal(requests.filter(url => url.pathname === '/api/streamers').at(-1).searchParams.get('offset'), '2');
   legacyPagination = false;
   await legacy.close();
+  largeDirectory = true;
+  const large = await setupPage();
+  await waitCards(large, '.stream-card', 2);
+  const beforeDirectory = requests.length;
+  await navigate(large, 'streamers');
+  await waitCards(large, '.streamer-card', 24);
+  await large.waitForFunction(() => !document.getElementById('refresh-button').disabled);
+  assert.equal(requests.slice(beforeDirectory).filter(url => url.pathname === '/api/streamers').length, 1);
+  assert.equal(requests.slice(beforeDirectory).filter(url => url.pathname === '/api/favorites').length, 0);
+  assert.match(await large.locator('.search-scope').innerText(), /200件/);
+  const bufferedRequests = requests.length;
+  await large.locator('[data-load-more="streamers"]').click();
+  await waitCards(large, '.streamer-card', 48);
+  assert.equal(requests.length, bufferedRequests, 'Showing buffered rows must not fetch');
+  await large.locator('#search-input').fill('取得済み末尾');
+  await waitCards(large, '.streamer-card', 1);
+  assert.equal(await large.locator('.streamer-card').getAttribute('data-channel-id'), 'extra-196');
+  assert.equal(requests.length, bufferedRequests, 'Search includes fetched but not yet displayed rows');
+  await large.locator('#search-input').fill('次の200件');
+  await waitCards(large, '.streamer-card', 0);
+  await large.waitForTimeout(400);
+  assert.equal(requests.length, bufferedRequests, 'No matches must not automatically fetch the next page');
+  assert.match(await large.locator('.empty').innerText(), /読み込み済み/);
+  await large.locator('[data-reset]').first().click();
+  await waitCards(large, '.streamer-card', 24);
+  for (const count of [48, 72, 96, 120, 144, 168, 192, 200]) {
+    await large.locator('[data-load-more="streamers"]').click();
+    await waitCards(large, '.streamer-card', count);
+  }
+  assert.equal(requests.length, bufferedRequests, 'All first 200 rows are displayed without more API calls');
+  await large.locator('[data-load-more="streamers"]').click();
+  await waitCards(large, '.streamer-card', 201);
+  assert.equal(requests.length, bufferedRequests + 1, 'Only exhaustion fetches the next batch, with no status lookup');
+  assert.equal(requests.at(-1).searchParams.get('limit'), '200');
+  assert.equal(requests.at(-1).searchParams.get('cursor'), 'streamer-next');
+  await large.locator('#search-input').fill('次の200件');
+  await waitCards(large, '.streamer-card', 1);
+  assert.equal(requests.length, bufferedRequests + 1, 'Newly fetched data becomes searchable locally');
+  await large.close();
+  largeDirectory = false;
   emptyLive = true;
   const empty = await setupPage();
   await empty.waitForSelector('.empty');
@@ -223,7 +298,7 @@ try {
   await empty.close();
   emptyLive = false;
   assert.deepEqual(errors, [], 'No uncaught browser exceptions');
-  console.log('PASS: initial load, character counts/tabs, category/sort, keyboard favorites, cursor and legacy paging, server search/filter, favorites order/date/removal, error/retry/data preservation, mobile/tablet layout, empty state.');
+  console.log('PASS: 200-row batches, buffered 24-card rendering, local keyword search without requests, shared live/upcoming status, cursor and legacy paging, category/filter, favorites, retry, keyboard and mobile layout.');
   console.log('Screenshots: ' + output);
 } finally {
   await browser.close();
