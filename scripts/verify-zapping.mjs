@@ -423,6 +423,35 @@ try {
     assert.equal(responsiveCarousel.slot, true, `${width}px carousel keeps centered slot`);
     await responsive.close();
   }
+  const viewingLayouts = [];
+  for (const viewport of [{ width: 2560, height: 1440 }, { width: 1920, height: 1080 }, { width: 1366, height: 768 }]) {
+    const responsive = await setupPage(viewport, 'http://frontend.test/?view=zapping&video=b');
+    await wait(responsive, '.zapping-page');
+    await wait(responsive, '#persistent-player iframe');
+    const metrics = await responsive.locator('.zapping-page').evaluate(page => {
+      const rect = selector => { const r = document.querySelector(selector).getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }; };
+      const app = rect('#app');
+      const slot = rect('#zapping-player-slot');
+      const info = rect('.zapping-info');
+      return {
+        app, slot, info,
+        overflow: document.documentElement.scrollWidth > innerWidth,
+        playerAspect: slot.width / slot.height,
+        catchphrase: page.textContent.includes('次の「見たい」へ。'),
+        centerDelta: Math.abs((slot.left + slot.right) / 2 - (app.left + app.right) / 2),
+      };
+    });
+    assert.equal(metrics.overflow, false, `${viewport.width}x${viewport.height} viewer has no horizontal overflow`);
+    assert.equal(metrics.catchphrase, false, 'viewer catchphrase is removed');
+    assert.ok(metrics.centerDelta <= 2, `${viewport.width}px carousel player is centered`);
+    assert.ok(Math.abs(metrics.playerAspect - 16 / 9) < .02, 'player remains 16:9');
+    assert.ok(metrics.info.bottom <= viewport.height, `${viewport.width}x${viewport.height} primary stream info fits without scrolling`);
+    viewingLayouts.push({ viewport, ...metrics });
+    await responsive.screenshot({ path: path.join(output, `responsive-viewing-${viewport.width}x${viewport.height}.png`), fullPage: true });
+    await responsive.close();
+  }
+  assert.ok(viewingLayouts[0].slot.width >= viewingLayouts[1].slot.width * 1.25, 'WQHD player grows materially beyond Full HD');
+  assert.ok(viewingLayouts[2].slot.height <= 430, 'short laptop viewport keeps player height compact');
   for (const width of [1440, 1200, 1024, 820, 761, 760, 390, 320]) {
     const home = await setupPage({ width, height: 900 }, 'http://frontend.test/', { now: '2026-09-04T17:20:00Z' });
     await wait(home, '.stream-card', 4);

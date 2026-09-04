@@ -111,8 +111,8 @@ try {
   assert.equal(await page.locator('[data-character-select]').inputValue(), 'juri');
   await navigate(page, 'characters');
   const juri = page.locator('[data-character="juri"]');
-  assert.match(await juri.innerText(), /配信中 1件/);
-  assert.match(await juri.innerText(), /配信予定 1件/);
+  assert.match(await juri.innerText(), /LIVE 1/);
+  assert.match(await juri.innerText(), /予定 1/);
   await juri.focus();
   await page.keyboard.press('Enter');
   await waitCards(page, '.live-grid .stream-card', 1);
@@ -290,6 +290,62 @@ try {
   assert.equal(requests.length, bufferedRequests + 1, 'Newly fetched data becomes searchable locally');
   await large.close();
   largeDirectory = false;
+  const layout = await setupPage({ width: 2560, height: 1440 });
+  await waitCards(layout, '.live-grid .stream-card', 2);
+  const columnCount = async (selector, minimum = 20) => layout.locator(selector).evaluate((grid, minimum) => {
+    while (grid.children.length < minimum) grid.append(grid.firstElementChild.cloneNode(true));
+    return getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+  }, minimum);
+  const layoutRequests = requests.length;
+  assert.equal(await columnCount('.live-grid'), 6, 'WQHD live grid uses six readable columns');
+  await layout.screenshot({ path: path.join(output, 'responsive-wqhd-live.png'), fullPage: true });
+  await layout.setViewportSize({ width: 1920, height: 1080 });
+  assert.equal(await columnCount('.live-grid'), 4, 'Full HD live grid retains four columns');
+  await layout.setViewportSize({ width: 1366, height: 768 });
+  assert.equal(await columnCount('.live-grid'), 3, 'short laptop live cards retain usable width');
+  await layout.setViewportSize({ width: 1024, height: 768 });
+  assert.equal(await columnCount('.live-grid'), 2, 'wide tablet uses two live columns');
+  await layout.setViewportSize({ width: 820, height: 900 });
+  assert.equal(await columnCount('.live-grid'), 1, 'narrow tablet uses one readable live column');
+  assert.equal(requests.length, layoutRequests, 'responsive reflow never fetches data');
+  await layout.setViewportSize({ width: 2560, height: 1440 });
+  await navigate(layout, 'upcoming');
+  await waitCards(layout, '.upcoming-card', 1);
+  assert.equal(await columnCount('.upcoming-grid'), 5, 'WQHD upcoming grid uses five columns');
+  await layout.screenshot({ path: path.join(output, 'responsive-wqhd-upcoming.png'), fullPage: true });
+  await navigate(layout, 'streamers');
+  await waitCards(layout, '.streamer-card', 2);
+  assert.equal(await columnCount('.streamer-grid'), 6, 'WQHD directory uses six compact columns');
+  await layout.screenshot({ path: path.join(output, 'responsive-wqhd-streamers.png'), fullPage: true });
+  const directoryCard = await layout.locator('.streamer-card').first().evaluate(card => {
+    const image = card.querySelector('.channel-avatar-wrap').getBoundingClientRect();
+    const stats = getComputedStyle(card.querySelector('.streamer-stats span'));
+    return { imageHeight: image.height, statsBorder: stats.borderTopWidth };
+  });
+  assert.ok(directoryCard.imageHeight <= 190.5, 'directory avatars stay compact at WQHD');
+  assert.equal(directoryCard.statsBorder, '0px', 'directory metadata does not use large boxes');
+  await navigate(layout, 'favorites');
+  await waitCards(layout, '.streamer-card', 3);
+  assert.equal(await columnCount('.streamer-grid'), 6, 'WQHD favorites reuse the six-column directory grid');
+  assert.match((await layout.locator('.streamer-card').allInnerTexts())[0], /Aoi/, 'favorite LIVE priority is preserved');
+  await layout.screenshot({ path: path.join(output, 'responsive-wqhd-favorites.png'), fullPage: true });
+  await navigate(layout, 'characters');
+  await layout.waitForSelector('.character-card');
+  assert.equal(await columnCount('.character-grid'), 7, 'WQHD character grid uses seven columns');
+  await layout.screenshot({ path: path.join(output, 'responsive-wqhd-characters.png'), fullPage: true });
+  for (const view of ['notice', 'settings', 'help']) {
+    await navigate(layout, view);
+    const reading = await layout.locator('.reading-page').evaluate(page => {
+      const app = document.querySelector('#app').getBoundingClientRect();
+      const rect = page.getBoundingClientRect();
+      return { width: rect.width, centerDelta: Math.abs((rect.left + rect.right) / 2 - (app.left + app.right) / 2), overflow: document.documentElement.scrollWidth > innerWidth };
+    });
+    assert.ok(reading.width <= 820.5, `${view} preserves readable line length`);
+    assert.ok(reading.centerDelta <= 2, `${view} reading layout is intentionally centered`);
+    assert.equal(reading.overflow, false);
+    await layout.screenshot({ path: path.join(output, `responsive-wqhd-${view}.png`), fullPage: true });
+  }
+  await layout.close();
   emptyLive = true;
   const empty = await setupPage();
   await empty.waitForSelector('.empty');

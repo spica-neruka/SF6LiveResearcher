@@ -329,11 +329,11 @@ function carouselNeighbor(item, direction) {
 }
 function zappingPage() {
   const item = currentZapping();
-  if (!item) return `<section>${sectionHead('次の「見たい」へ。', '配信中の一覧から、気になる配信を続けて視聴。')}${stateNotice('live')}${!state.live.busy && !state.live.error ? '<div class="empty"><p>現在の条件で視聴できるLIVE配信がありません。</p></div>' : ''}${button('配信中一覧へ', 'data-zap-home')}</section>`;
+  if (!item) return `<section>${sectionHead('ライブ視聴', '配信中一覧から視聴する配信を選べます。')}${stateNotice('live')}${!state.live.busy && !state.live.error ? '<div class="empty"><p>現在の条件で視聴できるLIVE配信がありません。</p></div>' : ''}${button('配信中一覧へ', 'data-zap-home')}</section>`;
   const { items, index, filters } = state.zapping;
   const description = [CHARACTERS.find(c => c.id === filters.character)?.name, LIVE_CATEGORIES[filters.category], filters.q ? `「${filters.q}」` : '', filters.sort === 'newest' ? '新着順' : '視聴者数順'].filter(Boolean).join(' · ');
   return `<section class="zapping-page">
-    <div class="zapping-heading"><div><p class="eyebrow">LIVE</p><h2>次の「見たい」へ。</h2><p>${esc(description)} · <span class="player-position">${index + 1} / ${items.length}</span></p></div><div class="zapping-header-actions">${button('一覧へ戻る', 'data-zap-home')}${button('×', 'data-zap-close aria-label="ライブ視聴を閉じる" title="ライブ視聴を閉じる"', 'action-button zapping-close')}</div></div>
+    <div class="zapping-heading"><div><p class="eyebrow">ライブ視聴</p><p>${esc(description)} · <span class="player-position">${index + 1} / ${items.length}</span></p></div><div class="zapping-header-actions">${button('一覧へ戻る', 'data-zap-home')}${button('×', 'data-zap-close aria-label="ライブ視聴を閉じる" title="ライブ視聴を閉じる"', 'action-button zapping-close')}</div></div>
     ${state.zapping.missing ? '<p class="state-message">指定された動画は現在の一覧にないため、先頭の配信を表示しています。</p>' : ''}
     <div class="zapping-carousel" data-zapping-gesture aria-label="前後の配信カルーセル">
       ${carouselNeighbor(items[index - 1], -1)}
@@ -377,7 +377,7 @@ function favoritesPage() {
 function charactersPage() {
   const items = CHARACTERS.filter(c => !query() || normalize(`${c.name} ${c.id}`).includes(query()));
   return `<section class="section">${sectionHead('キャラクターから探す', 'キャラクターを選ぶと、配信中と配信予定を切り替えて確認できます。')}
-    ${stateNotice('live')}${stateNotice('upcoming')}<div class="character-grid">${items.map(c => `<button type="button" class="character-card" data-character="${c.id}"><span class="character-art image-art" style="background-image:url('./assets/characters/character_${c.id}_l.png')" aria-hidden="true"></span><strong>${c.name}</strong><small>配信中 ${characterCount('live', c.id)}件</small><small>配信予定 ${characterCount('upcoming', c.id)}件</small></button>`).join('')}</div>
+    ${stateNotice('live')}${stateNotice('upcoming')}<div class="character-grid">${items.map(c => `<button type="button" class="character-card" data-character="${c.id}"><span class="character-art image-art" style="background-image:url('./assets/characters/character_${c.id}_l.png')" aria-hidden="true"></span><strong>${c.name}</strong><span class="character-counts"><small><span aria-hidden="true">●</span> LIVE ${characterCount('live', c.id)}</small><small><span aria-hidden="true">◷</span> 予定 ${characterCount('upcoming', c.id)}</small></span></button>`).join('')}</div>
     ${!items.length ? `<div class="empty">該当するキャラクターはありません。${button('条件をクリア', 'data-reset')}</div>` : ''}
     ${state.live.hasNext || state.upcoming.hasNext ? '<p class="state-message">件数は読み込み済みの配信から集計しています。続きも確認できます。</p>' : ''}
     ${state.live.hasNext ? `<p>配信中の続きを取得</p>${loadMore('live')}` : ''}${state.upcoming.hasNext ? `<p>配信予定の続きを取得</p>${loadMore('upcoming')}` : ''}
@@ -387,9 +387,17 @@ function explorePage() {
   return `<section class="section">${sectionHead('見たい配信を探す', '配信者やキャラクターから探せます。')}<div class="explore-grid">${[['streamers', '配信者から探す', '名前・カテゴリ・活動形態で見つける'], ['characters', 'キャラクターから探す', '使いたいキャラクターの配信をチェック'], ['notice', 'お知らせ', 'サイトの更新情報'], ['settings', '設定', 'お気に入りの保存について'], ['help', '使い方', '検索や表示情報について']].map(([view, title, text]) => `<button type="button" class="explore-card" data-go="${view}"><strong>${title}</strong><span>${text}</span><span aria-hidden="true">→</span></button>`).join('')}</div></section>`;
 }
 function infoPage() {
-  if (state.view === 'settings') return `<section class="page-card"><h2>お気に入りの保存</h2><p>お気に入りはこのブラウザに保存されます。ログインは不要です。別の端末やブラウザとは共有されません。</p><p>ブラウザのサイトデータを削除すると、お気に入りも消えます。</p>${button('お気に入りを確認する', 'data-go="favorites"')}</section>`;
-  if (state.view === 'notice') return `<section class="page-card"><h2>お知らせ</h2><div class="notice"><strong>2026/09/04</strong><p>スマホでの検索、配信者の絞り込み、お気に入りの配信状況表示を改善しました。</p></div><div class="notice"><strong>2026/09/03</strong><p>配信カテゴリによる絞り込みに対応しました。</p></div><div class="notice"><strong>2026/09/02</strong><p>配信者情報を定期的に更新し、より新しい情報を表示できるようにしています。</p></div><div class="notice"><strong>2026/09/01</strong><p>SF6 LIVE RESEARCHERを公開しました。</p></div></section>`;
-  return `<section class="page-card"><h2>使い方</h2><h3>見たい配信を探す</h3><p>配信中・配信予定では、タイトル、配信者名、キャラクターで検索できます。キャラクターとカテゴリを組み合わせて絞り込めます。配信者ページのキーワード検索は、取得済みの配信者名・チャンネル名を絞り込みます。未取得の配信者も探す場合は「もっと見る」で続きを取得してください。</p><h3>配信を見る</h3><p>LIVEカードを選ぶと、その配信からサイト内でライブ視聴を開始します。いまの検索・キャラクター・カテゴリ・並び順を引き継いで視聴できます。キーボードではTabキーで配信タイトルを選び、Enterキーで開けます。配信予定のサムネイルやタイトルはYouTubeを新しいタブで開きます。</p><h3>ライブ視聴の操作</h3><p>前後のサムネイルをクリック・タップして配信を切り替えます。PCでは左右、スマホでは上下に次の配信が見えます。Player外では← / ↑キーで前、→ / ↓キーで次へ移動でき、サムネイル周辺でホイール・上下スワイプも使えます。再生・シーク・音量・設定・全画面はYouTube標準UIを操作してください。ライブ視聴は画面上部の×で閉じられます。音声ありで再生を試みます。自動再生が制限される場合はYouTubeプレイヤーの再生ボタンを押してください。音量・ミュートはプレイヤーで調整できます。</p><p>一覧や配信者情報に移動すると、右下のミニプレイヤーで視聴を続けられます。「大型に戻る」で復帰、「閉じる」で終了します。配信を切り替えても一覧の再取得は行いません。最新の配信を探す場合は一覧で更新し、配信カードを選び直してください。</p><h3>お気に入り</h3><p>カードの♡で配信者を登録できます。♥で解除できます。オフラインの配信者も表示され、配信予定があれば開始時刻を確認できます。</p><h3>表示情報について</h3><p>YouTubeの公開情報を自動収集しています。実際の配信状況や視聴者数とは時間差があります。キャラクター情報は配信タイトルなどから推定するため、実際の使用キャラクターと異なる場合があります。</p><p>更新時刻は、この画面で情報を受け取った時刻です。情報は最大5分程度キャッシュされ、収集間隔による遅れもあります。「更新」を押してもすぐに変わらない場合があります。開始予定の日時は日本時間（JST）です。</p></section>`;
+  if (state.view === 'settings') return `<section class="page-card reading-page"><header class="reading-header"><p class="eyebrow">PREFERENCES</p><h2>設定</h2><p>この端末でのSF6 LIVEの使い方を管理します。</p></header><div class="setting-row"><div><h3>お気に入り</h3><p>お気に入りはこのブラウザに保存されます。ログインは不要で、別の端末やブラウザとは共有されません。ブラウザのサイトデータを削除すると、お気に入りも消えます。</p></div>${button('お気に入りを確認', 'data-go="favorites"')}</div></section>`;
+  if (state.view === 'notice') return `<section class="page-card reading-page"><header class="reading-header"><p class="eyebrow">UPDATES</p><h2>お知らせ</h2><p>SF6 LIVEの更新情報です。</p></header><ol class="notice-timeline"><li><time datetime="2026-09-04">2026.09.04</time><p>スマホでの検索、配信者の絞り込み、お気に入りの配信状況表示を改善しました。</p></li><li><time datetime="2026-09-03">2026.09.03</time><p>配信カテゴリによる絞り込みに対応しました。</p></li><li><time datetime="2026-09-02">2026.09.02</time><p>配信者情報を定期的に更新し、より新しい情報を表示できるようにしています。</p></li><li><time datetime="2026-09-01">2026.09.01</time><p>SF6 LIVE RESEARCHERを公開しました。</p></li></ol></section>`;
+  const helpSections = [
+    ['01', '配信を探す', '配信中・配信予定では、タイトル、配信者名、キャラクターで検索できます。キャラクターとカテゴリを組み合わせて絞り込めます。配信者ページのキーワード検索は、取得済みの配信者名・チャンネル名を絞り込みます。未取得の配信者も探す場合は「もっと見る」で続きを取得してください。'],
+    ['02', '配信を見る', 'LIVEカードを選ぶと、その配信からサイト内でライブ視聴を開始します。いまの検索・キャラクター・カテゴリ・並び順を引き継ぎます。キーボードではTabキーで配信タイトルを選び、Enterキーで開けます。配信予定のサムネイルやタイトルはYouTubeを新しいタブで開きます。'],
+    ['03', 'ライブ視聴の操作', '前後のサムネイルをクリック・タップして配信を切り替えます。PCでは左右、スマホでは上下に次の配信が見えます。Player外では矢印キー、サムネイル周辺ではホイール・上下スワイプも使えます。再生・シーク・音量・設定・全画面はYouTube標準UIを操作してください。自動再生が制限される場合は、YouTubeプレイヤーの再生ボタンを押してください。'],
+    ['04', 'ミニプレイヤー', '一覧や配信者情報に移動すると、右下のミニプレイヤーで視聴を続けられます。「大型に戻る」で復帰、「閉じる」で終了します。配信を切り替えても一覧の再取得は行いません。最新の配信を探す場合は一覧で更新し、配信カードを選び直してください。'],
+    ['05', 'お気に入り', 'カードの♡で配信者を登録できます。♥で解除できます。オフラインの配信者も表示され、配信予定があれば開始時刻を確認できます。'],
+    ['06', '表示情報について', 'YouTubeの公開情報を自動収集しています。実際の配信状況や視聴者数とは時間差があります。キャラクター情報は配信タイトルなどから推定するため、実際の使用キャラクターと異なる場合があります。更新時刻は、この画面で情報を受け取った時刻です。情報は最大5分程度キャッシュされ、収集間隔による遅れもあります。開始予定の日時は日本時間（JST）です。'],
+  ];
+  return `<section class="page-card reading-page help-page"><header class="reading-header"><p class="eyebrow">GUIDE</p><h2>使い方</h2><p>配信を探して視聴するまでの操作を案内します。</p></header><div class="help-sections">${helpSections.map(([number, title, text]) => `<section><span>${number}</span><div><h3>${title}</h3><p>${text}</p></div></section>`).join('')}</div></section>`;
 }
 function visibleResources() {
   if (state.view === 'home') return ['live'];
@@ -435,6 +443,7 @@ function render() {
   $('#refresh-button').disabled = !keys.length || keys.some(key => state[key].busy);
   $('#refresh-button').hidden = !keys.length;
   $('#last-fetched').hidden = !keys.length;
+  $('#app').className = ['home', 'upcoming', 'streamers', 'characters', 'favorites'].includes(state.view) ? 'page-layout page-layout--grid' : state.view === 'zapping' ? 'page-layout page-layout--viewing' : 'page-layout page-layout--reading';
   $('#app').innerHTML = state.view === 'zapping' ? zappingPage() : state.view === 'streamer' ? selectedStreamerPage() : state.view === 'home' ? videosPage('live') : state.view === 'upcoming' ? videosPage('upcoming') : state.view === 'streamers' ? streamersPage() : state.view === 'favorites' ? favoritesPage() : state.view === 'characters' ? charactersPage() : state.view === 'explore' ? explorePage() : infoPage();
   if (keys.length) $('#app').insertAdjacentHTML('beforeend', '<p class="freshness-note">更新時刻は画面で情報を受け取った時刻です。情報の反映には時間差があり、更新しても最大5分程度は同じ情報が表示される場合があります。</p>');
   if (currentZapping()) void player.show(currentZapping());
