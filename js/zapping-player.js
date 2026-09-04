@@ -37,7 +37,6 @@ export function createZappingPlayer({ onReturn, onClose, onMessage }) {
     <p class="player-message" role="status"></p>`;
   document.body.append(shell);
   let player, ready = false, current = null, generation = 0, creating = false;
-  let muted = true;
   function message(text) {
     shell.querySelector('.player-message').textContent = text;
     onMessage(text);
@@ -72,7 +71,8 @@ export function createZappingPlayer({ onReturn, onClose, onMessage }) {
     layout();
     if (!changed && (ready || creating)) return;
     message('');
-    if (ready) { muted = player.isMuted(); player.loadVideoById(item.id); return; }
+    // Reuse the player without overriding its native volume/mute settings.
+    if (ready) { player.loadVideoById(item.id); return; }
     if (creating) return; // The delayed onReady always loads the latest selection.
     creating = true;
     message('プレイヤーを読み込み中…');
@@ -92,13 +92,11 @@ export function createZappingPlayer({ onReturn, onClose, onMessage }) {
             event.target.getIframe().setAttribute('title', 'YouTube LIVE プレイヤー');
             event.target.getIframe().setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
             event.target.getIframe().setAttribute('allowfullscreen', '');
-            if (muted) event.target.mute();
             event.target.loadVideoById(current.id);
             message('');
           },
           onStateChange(event) {
             if (attempt !== generation) return;
-            muted = event.target.isMuted();
             if (event.data === 1) message('');
             if (event.data === 0) message('配信が終了しました。次の配信を選べます。');
           },

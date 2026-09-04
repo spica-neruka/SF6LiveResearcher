@@ -28,15 +28,14 @@
         <button class="nav-item" data-view="settings" type="button"><span aria-hidden="true">⚙</span><span class="nav-label">設定</span></button>
         <button class="nav-item" data-view="help" type="button"><span aria-hidden="true">?</span><span class="nav-label">使い方</span></button>
         <button class="nav-item nav-explore" data-view="explore" type="button"><span aria-hidden="true">⌕</span><span class="nav-label">探す</span></button>
-        <button class="nav-item nav-zapping" data-view="zapping" type="button"><span aria-hidden="true">▶</span><span class="nav-label">ザッピング</span></button>
       </nav>
     </aside>
     <main class="main-content">
       <header class="topbar">
         <div><p class="eyebrow">STREET FIGHTER 6 · STREAM HUB</p><h1 id="page-title">配信中</h1></div>
         <div class="top-actions">
-          <div class="fetch-meta"><button id="refresh-button" class="refresh-button" type="button">↻ 更新</button><span id="last-fetched">最終取得: —</span></div>
           <label class="search" for="search-input"><span aria-hidden="true">⌕</span><span class="sr-only" id="search-label">配信を検索</span><input id="search-input" type="search" placeholder="配信者やキャラを検索" aria-describedby="search-hint" autocomplete="off" /></label>
+          <div class="fetch-meta"><button id="refresh-button" class="refresh-button" type="button" aria-label="更新" title="更新">↻</button><span id="last-fetched">—</span></div>
           <span class="sr-only" id="search-hint">配信者名、タイトル、キャラクター名で絞り込みます</span>
         </div>
       </header>

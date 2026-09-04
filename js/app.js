@@ -16,7 +16,7 @@ const CHARACTERS = [
 ].map(([name, id]) => ({ name, id }));
 const LIVE_CATEGORIES = { ranked: 'ランクマッチ', custom: '参加型', tournament: '大会', casual: 'カジュアル', training: 'トレーニング', avatar_battle: 'アバターバトル', other: 'その他' };
 const CATEGORIES = { pro_gamer: 'プロゲーマー', vtuber: 'VTuber', game_streamer: 'ゲーム配信者', official: '公式', team_org: 'チーム・団体', event: 'イベント', media: 'メディア' };
-const TITLES = { home: '配信中', zapping: 'ザッピング', streamer: '配信者を見る', upcoming: '配信予定', streamers: '配信者', characters: 'キャラクター', favorites: 'お気に入り', explore: '探す', notice: 'お知らせ', settings: '設定', help: '使い方' };
+const TITLES = { home: '配信中', zapping: 'ライブ視聴', streamer: '配信者情報', upcoming: '配信予定', streamers: '配信者', characters: 'キャラクター', favorites: 'お気に入り', explore: '探す', notice: 'お知らせ', settings: '設定', help: '使い方' };
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const normalize = value => String(value ?? '').normalize('NFKC').toLocaleLowerCase().trim();
@@ -44,6 +44,15 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? '日時未定' : new Intl.DateTimeFormat('ja-JP', {
     timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
   }).format(date);
+}
+function formatFetchedAt(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  const parts = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(date).reduce((result, part) => { result[part.type] = part.value; return result; }, {});
+  const day = date.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: 'numeric', day: 'numeric' });
+  const today = new Date().toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: 'numeric', day: 'numeric' });
+  return `${day === today ? '' : `${parts.month}/${parts.day} `}${parts.hour}:${parts.minute} 更新`;
 }
 function timeValue(value, fallback = 0) { const n = Date.parse(value); return Number.isNaN(n) ? fallback : n; }
 function safeImage(value) {
@@ -169,18 +178,25 @@ function favoriteButton(id, name) {
   return button(selected ? '♥' : '♡', `data-fav="${esc(id)}" aria-pressed="${selected}" aria-label="${esc(name)}を${selected ? 'お気に入りから削除' : 'お気に入りに追加'}"`, `favorite ${selected ? 'on' : ''}`);
 }
 function imageMarkup(url, className, alt = '') { return url ? `<img src="${esc(url)}" class="${className}" alt="${esc(alt)}" loading="lazy" referrerpolicy="no-referrer">` : '<span class="avatar-placeholder" aria-hidden="true">SF</span>'; }
+function liveVideoUrl(id) {
+  const params = new URLSearchParams({ view: 'zapping', video: id, zap_sort: state.sort });
+  if (state.character !== 'all') params.set('zap_character', state.character);
+  if (state.category !== 'all') params.set('zap_category', state.category);
+  if (state.queries.home) params.set('zap_q', state.queries.home);
+  return `?${params}`;
+}
 function videoCard(item, upcoming = false) {
   const names = item.characters.join(' / ');
   return `<article class="${upcoming ? 'upcoming-card' : 'stream-card'}" data-video-id="${esc(item.id)}">
-    <a class="card-media-link" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-hidden="true">
+    ${upcoming ? `<a class="card-media-link" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer" tabindex="-1" aria-hidden="true">` : '<div class="card-media-link">'}
       <div class="${upcoming ? 'upcoming-thumb' : 'thumb'}">${imageMarkup(item.image, 'video-image')}
         ${upcoming ? `<span class="upcoming-time">${esc(formatDate(item.scheduled))} JST</span>` : '<span class="live-pill">● LIVE</span>'}
       </div>
-    </a>
-    <div class="card-body"><div class="title-row"><a class="stream-title" href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">${esc(item.title)}<span class="sr-only">（YouTube・新しいタブ）</span></a>${favoriteButton(item.channelId, item.name)}</div>
+    ${upcoming ? '</a>' : '</div>'}
+    <div class="card-body"><div class="title-row"><a class="stream-title" ${upcoming ? `href="${esc(item.url)}" target="_blank" rel="noopener noreferrer"` : `href="${esc(liveVideoUrl(item.id))}" data-zap-start="${esc(item.id)}"`}>${esc(item.title)}<span class="sr-only">${upcoming ? '（YouTube・新しいタブ）' : '（ライブ視聴）'}</span></a>${favoriteButton(item.channelId, item.name)}</div>
       <div class="stream-channel">${esc(item.name)}</div><div class="meta">${names ? `<span>${esc(names)}</span>` : ''}
       ${upcoming ? '<span>配信予定</span>' : `<span>${esc(LIVE_CATEGORIES[item.category] || 'その他')}</span>${item.viewers != null ? `<span>${Number(item.viewers).toLocaleString()}人が視聴中</span>` : ''}`}</div>
-    ${!upcoming ? button('▶ ザッピングで見る', `data-zap-start="${esc(item.id)}"`, 'action-button zap-card-button') : ''}</div></article>`;
+    </div></article>`;
 }
 function streamerStatus(item) {
   // Favorites have explicit status; directory cards reuse the shared video lists.
@@ -252,7 +268,6 @@ function videosPage(key) {
     <div class="filter-controls">${characterSelect()}${isLive ? `<label class="filter-control">並び順<select data-sort><option value="viewers" ${state.sort === 'viewers' ? 'selected' : ''}>視聴者数順</option><option value="newest" ${state.sort === 'newest' ? 'selected' : ''}>新着順</option></select></label>` : ''}</div>
     ${isLive ? `<div class="filter-row" aria-label="配信カテゴリ">${[['all', 'すべて'], ...Object.entries(LIVE_CATEGORIES)].map(([id, label]) => button(label, `data-live-category="${id}" aria-pressed="${state.category === id}"`, `chip ${state.category === id ? 'active' : ''}`)).join('')}</div>` : ''}
     ${characterTabs()}${filters ? `<div class="filter-summary">条件を絞り込んでいます ${button('条件をクリア', 'data-reset', 'text-button')}</div>` : ''}
-    ${isLive ? `<div class="zapping-entry">${button('▶ ザッピングを開始', `data-zap-start="" ${items.length ? '' : 'disabled'}`, 'action-button zap-primary')}<span>いまの条件・並び順で続けて視聴</span></div>` : ''}
     ${stateNotice(key)}${items.length ? `<div class="${isLive ? 'live-grid' : 'upcoming-grid'}">${items.map(item => videoCard(item, !isLive)).join('')}</div>` : emptyMessage(key, filters, isLive ? '配信中の動画' : '配信予定')}${loadMore(key)}
   </section>`;
 }
@@ -318,24 +333,24 @@ function zappingPage() {
   const { items, index, filters } = state.zapping;
   const description = [CHARACTERS.find(c => c.id === filters.character)?.name, LIVE_CATEGORIES[filters.category], filters.q ? `「${filters.q}」` : '', filters.sort === 'newest' ? '新着順' : '視聴者数順'].filter(Boolean).join(' · ');
   return `<section class="zapping-page">
-    <div class="zapping-heading"><div><p class="eyebrow">LIVE ZAPPING</p><h2>次の「見たい」へ。</h2><p>${esc(description)} · <span class="player-position">${index + 1} / ${items.length}</span></p></div><div class="zapping-header-actions">${button('一覧へ戻る', 'data-zap-home')}${button('×', 'data-zap-close aria-label="ザッピングを閉じる" title="ザッピングを閉じる"', 'action-button zapping-close')}</div></div>
+    <div class="zapping-heading"><div><p class="eyebrow">LIVE</p><h2>次の「見たい」へ。</h2><p>${esc(description)} · <span class="player-position">${index + 1} / ${items.length}</span></p></div><div class="zapping-header-actions">${button('一覧へ戻る', 'data-zap-home')}${button('×', 'data-zap-close aria-label="ライブ視聴を閉じる" title="ライブ視聴を閉じる"', 'action-button zapping-close')}</div></div>
     ${state.zapping.missing ? '<p class="state-message">指定された動画は現在の一覧にないため、先頭の配信を表示しています。</p>' : ''}
     <div class="zapping-carousel" data-zapping-gesture aria-label="前後の配信カルーセル">
       ${carouselNeighbor(items[index - 1], -1)}
       <div id="zapping-player-slot" aria-label="YouTubeプレイヤー表示領域"></div>
       ${carouselNeighbor(items[index + 1], 1)}
     </div><div class="zapping-main">
-      <div class="zapping-info"><div class="zapping-channel"><span class="zap-live">● LIVE</span><strong>${esc(item.name)}</strong>${favoriteButton(item.channelId, item.name)}</div>
+      <div class="zapping-info"><div class="zapping-channel"><span class="zap-live">● LIVE</span><a class="zapping-streamer" href="?view=streamer&amp;channel=${encodeURIComponent(item.channelId)}" data-zap-streamer><strong>${esc(item.name)}</strong></a>${favoriteButton(item.channelId, item.name)}</div>
       <h3>${esc(item.title)}</h3><div class="meta"><span>${item.viewers != null ? `${Number(item.viewers).toLocaleString()}人が視聴中` : '視聴者数未取得'}</span><span>${esc(LIVE_CATEGORIES[item.category] || 'その他')}</span>${item.characters.length ? `<span>${esc(item.characters.join(' / '))}</span>` : ''}</div>
-      <div class="zapping-links">${button('配信者を見る', 'data-zap-streamer')}<a href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">YouTubeで開く ↗</a></div></div>
-      <p class="zapping-footnote">前後のサムネイル、または ← / ↑・→ / ↓ キーで配信を切り替えます。サムネイル周辺では上下スワイプ・ホイールも使えます。映像内はYouTube標準操作です。配信情報は開始時の一覧です。${state.live.hasNext ? '続きは配信中一覧の「もっと見る」で取得できます。' : ''}</p>
+      </div>
+      <p class="zapping-footnote">前後の配信を選んで切り替えられます。</p>
     </div></section>`;
 }
 function selectedStreamerPage() {
   const item = state.selectedStreamer;
   if (!item) return `<section class="page-card"><p>この配信者の情報はまだ取得されていません。</p>${button('配信者一覧へ', 'data-go="streamers"')}</section>`;
   const profile = state.streamers.items.find(profile => profile.id === item.channelId);
-  return `<section class="page-card">${sectionHead(item.name, '配信者情報')}<div class="zapping-channel">${favoriteButton(item.channelId, item.name)}${profile?.category ? `<span>${esc(CATEGORIES[profile.category] || '未分類')}</span>` : ''}</div><p>${esc(item.characters.join(' / '))}</p><h3>配信情報</h3><p>${esc(item.title)}</p><div class="zapping-links">${button('ザッピングに戻る', 'data-zap-resume')}<a href="https://www.youtube.com/channel/${encodeURIComponent(item.channelId)}" target="_blank" rel="noopener noreferrer">YouTubeチャンネル ↗</a></div></section>`;
+  return `<section class="page-card">${sectionHead(item.name, '配信者情報')}<div class="zapping-channel">${favoriteButton(item.channelId, item.name)}${profile?.category ? `<span>${esc(CATEGORIES[profile.category] || '未分類')}</span>` : ''}</div><p>${esc(item.characters.join(' / '))}</p><h3>配信情報</h3><p>${esc(item.title)}</p><div class="zapping-links">${button('ライブ視聴に戻る', 'data-zap-resume')}<a href="https://www.youtube.com/channel/${encodeURIComponent(item.channelId)}" target="_blank" rel="noopener noreferrer">YouTubeチャンネル ↗</a></div></section>`;
 }
 function streamersPage() {
   const data = state.streamers;
@@ -369,12 +384,12 @@ function charactersPage() {
   </section>`;
 }
 function explorePage() {
-  return `<section class="section">${sectionHead('見たい配信を探す', '配信者やキャラクターから探せます。')}<div class="explore-grid">${[['zapping', 'ザッピングで見る', '配信中の一覧から、次の見たい配信へ'], ['streamers', '配信者から探す', '名前・カテゴリ・活動形態で見つける'], ['characters', 'キャラクターから探す', '使いたいキャラクターの配信をチェック'], ['notice', 'お知らせ', 'サイトの更新情報'], ['settings', '設定', 'お気に入りの保存について'], ['help', '使い方', '検索や表示情報について']].map(([view, title, text]) => `<button type="button" class="explore-card" data-go="${view}"><strong>${title}</strong><span>${text}</span><span aria-hidden="true">→</span></button>`).join('')}</div></section>`;
+  return `<section class="section">${sectionHead('見たい配信を探す', '配信者やキャラクターから探せます。')}<div class="explore-grid">${[['streamers', '配信者から探す', '名前・カテゴリ・活動形態で見つける'], ['characters', 'キャラクターから探す', '使いたいキャラクターの配信をチェック'], ['notice', 'お知らせ', 'サイトの更新情報'], ['settings', '設定', 'お気に入りの保存について'], ['help', '使い方', '検索や表示情報について']].map(([view, title, text]) => `<button type="button" class="explore-card" data-go="${view}"><strong>${title}</strong><span>${text}</span><span aria-hidden="true">→</span></button>`).join('')}</div></section>`;
 }
 function infoPage() {
   if (state.view === 'settings') return `<section class="page-card"><h2>お気に入りの保存</h2><p>お気に入りはこのブラウザに保存されます。ログインは不要です。別の端末やブラウザとは共有されません。</p><p>ブラウザのサイトデータを削除すると、お気に入りも消えます。</p>${button('お気に入りを確認する', 'data-go="favorites"')}</section>`;
   if (state.view === 'notice') return `<section class="page-card"><h2>お知らせ</h2><div class="notice"><strong>2026/09/04</strong><p>スマホでの検索、配信者の絞り込み、お気に入りの配信状況表示を改善しました。</p></div><div class="notice"><strong>2026/09/03</strong><p>配信カテゴリによる絞り込みに対応しました。</p></div><div class="notice"><strong>2026/09/02</strong><p>配信者情報を定期的に更新し、より新しい情報を表示できるようにしています。</p></div><div class="notice"><strong>2026/09/01</strong><p>SF6 LIVE RESEARCHERを公開しました。</p></div></section>`;
-  return `<section class="page-card"><h2>使い方</h2><h3>見たい配信を探す</h3><p>配信中・配信予定では、タイトル、配信者名、キャラクターで検索できます。キャラクターとカテゴリを組み合わせて絞り込めます。配信者ページのキーワード検索は、取得済みの配信者名・チャンネル名を絞り込みます。未取得の配信者も探す場合は「もっと見る」で続きを取得してください。</p><h3>配信を見る</h3><p>サムネイルやタイトルを選ぶと、YouTubeを新しいタブで開きます。キーボードではTabキーでリンクを選び、Enterキーで開けます。</p><h3>ザッピングで見る</h3><p>配信中一覧やカードの「ザッピング」で、いまの検索・キャラクター・カテゴリ・並び順を引き継いで視聴できます。前後のサムネイルをクリック・タップして配信を切り替えます。PCでは左右、スマホでは上下に次の配信が見えます。Player外では← / ↑キーで前、→ / ↓キーで次へ移動でき、サムネイル周辺でホイール・上下スワイプも使えます。再生・シーク・音量・設定・全画面はYouTube標準UIを操作してください。ザッピングは画面上部の×で閉じられます。最初はミュートで開始し、音声はプレイヤーで有効にできます。</p><p>一覧や配信者情報に移動すると、右下のミニプレイヤーで視聴を続けられます。「大型に戻る」で復帰、「閉じる」で終了します。配信を切り替えても一覧の再取得は行いません。最新の配信を探す場合は一覧で更新し、再度ザッピングを開始してください。</p><h3>お気に入り</h3><p>カードの♡で配信者を登録できます。♥で解除できます。オフラインの配信者も表示され、配信予定があれば開始時刻を確認できます。</p><h3>表示情報について</h3><p>YouTubeの公開情報を自動収集しています。実際の配信状況や視聴者数とは時間差があります。キャラクター情報は配信タイトルなどから推定するため、実際の使用キャラクターと異なる場合があります。</p><p>最終取得は、この画面で情報を受け取った時刻です。情報は最大5分程度キャッシュされ、収集間隔による遅れもあります。「更新」を押してもすぐに変わらない場合があります。開始予定の日時は日本時間（JST）です。</p></section>`;
+  return `<section class="page-card"><h2>使い方</h2><h3>見たい配信を探す</h3><p>配信中・配信予定では、タイトル、配信者名、キャラクターで検索できます。キャラクターとカテゴリを組み合わせて絞り込めます。配信者ページのキーワード検索は、取得済みの配信者名・チャンネル名を絞り込みます。未取得の配信者も探す場合は「もっと見る」で続きを取得してください。</p><h3>配信を見る</h3><p>LIVEカードを選ぶと、その配信からサイト内でライブ視聴を開始します。いまの検索・キャラクター・カテゴリ・並び順を引き継いで視聴できます。キーボードではTabキーで配信タイトルを選び、Enterキーで開けます。配信予定のサムネイルやタイトルはYouTubeを新しいタブで開きます。</p><h3>ライブ視聴の操作</h3><p>前後のサムネイルをクリック・タップして配信を切り替えます。PCでは左右、スマホでは上下に次の配信が見えます。Player外では← / ↑キーで前、→ / ↓キーで次へ移動でき、サムネイル周辺でホイール・上下スワイプも使えます。再生・シーク・音量・設定・全画面はYouTube標準UIを操作してください。ライブ視聴は画面上部の×で閉じられます。音声ありで再生を試みます。自動再生が制限される場合はYouTubeプレイヤーの再生ボタンを押してください。音量・ミュートはプレイヤーで調整できます。</p><p>一覧や配信者情報に移動すると、右下のミニプレイヤーで視聴を続けられます。「大型に戻る」で復帰、「閉じる」で終了します。配信を切り替えても一覧の再取得は行いません。最新の配信を探す場合は一覧で更新し、配信カードを選び直してください。</p><h3>お気に入り</h3><p>カードの♡で配信者を登録できます。♥で解除できます。オフラインの配信者も表示され、配信予定があれば開始時刻を確認できます。</p><h3>表示情報について</h3><p>YouTubeの公開情報を自動収集しています。実際の配信状況や視聴者数とは時間差があります。キャラクター情報は配信タイトルなどから推定するため、実際の使用キャラクターと異なる場合があります。</p><p>更新時刻は、この画面で情報を受け取った時刻です。情報は最大5分程度キャッシュされ、収集間隔による遅れもあります。「更新」を押してもすぐに変わらない場合があります。開始予定の日時は日本時間（JST）です。</p></section>`;
 }
 function visibleResources() {
   if (state.view === 'home') return ['live'];
@@ -416,12 +431,12 @@ function render() {
   $('#search-hint').textContent = state.view === 'streamers' ? '取得済みの配信者名・チャンネル名を検索します。検索による追加取得は行いません。' : 'この画面の読み込み済みの一覧を検索します。';
   const keys = visibleResources();
   const times = keys.map(key => state[key].fetchedAt).filter(Boolean);
-  $('#last-fetched').textContent = times.length ? `最終取得 ${formatDate(Math.min(...times))} JST` : '最終取得: —';
+  $('#last-fetched').textContent = times.length ? formatFetchedAt(Math.min(...times)) : '—';
   $('#refresh-button').disabled = !keys.length || keys.some(key => state[key].busy);
   $('#refresh-button').hidden = !keys.length;
   $('#last-fetched').hidden = !keys.length;
   $('#app').innerHTML = state.view === 'zapping' ? zappingPage() : state.view === 'streamer' ? selectedStreamerPage() : state.view === 'home' ? videosPage('live') : state.view === 'upcoming' ? videosPage('upcoming') : state.view === 'streamers' ? streamersPage() : state.view === 'favorites' ? favoritesPage() : state.view === 'characters' ? charactersPage() : state.view === 'explore' ? explorePage() : infoPage();
-  if (keys.length) $('#app').insertAdjacentHTML('beforeend', '<p class="freshness-note">最終取得は画面で情報を受け取った時刻です。情報の反映には時間差があり、更新しても最大5分程度は同じ情報が表示される場合があります。</p>');
+  if (keys.length) $('#app').insertAdjacentHTML('beforeend', '<p class="freshness-note">更新時刻は画面で情報を受け取った時刻です。情報の反映には時間差があり、更新しても最大5分程度は同じ情報が表示される場合があります。</p>');
   if (currentZapping()) void player.show(currentZapping());
   player.layout();
   if (focus) {
@@ -467,8 +482,12 @@ function toggleFavorite(id) {
   render();
 }
 document.addEventListener('click', event => {
-  const control = event.target.closest('button');
+  const control = event.target.closest('button, a[data-zap-start], a[data-zap-streamer]');
   if (!control || control.disabled) return;
+  if (control.matches('a')) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+  }
   if (control.hasAttribute('data-zap-close')) return closeZapping();
   if (control.hasAttribute('data-zap-start')) return startZapping(control.dataset.zapStart);
   if (control.hasAttribute('data-zap-resume')) return startZapping(null, true);

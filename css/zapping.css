@@ -1,7 +1,8 @@
-.zapping-entry { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 0 0 22px; }
-.zapping-entry span { color: var(--muted); font-size: 13px; }
-.zap-primary { background: #e73950; color: white; border-color: #fb5268; font-weight: 750; }
-.zap-card-button { width: 100%; margin-top: 14px; }
+/* A single native link covers the LIVE card; independent controls sit above it. */
+.stream-card { position: relative; cursor: pointer; }
+.stream-card .stream-title::after { content: ''; position: absolute; inset: 0; z-index: 3; }
+.stream-card .favorite { position: relative; z-index: 4; }
+.stream-card:has(.stream-title:focus-visible) { outline: 3px solid var(--blue); outline-offset: 2px; }
 .zapping-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
 .zapping-heading h2 { font-size: clamp(23px, 3vw, 32px); margin: 6px 0; }
 .zapping-heading p:not(.eyebrow) { color: var(--muted); font-size: 13px; margin-bottom: 0; overflow-wrap: anywhere; }
@@ -51,6 +52,7 @@
 .zapping-info { padding: 20px 0; }
 .zapping-channel { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .zapping-channel strong { font-size: 20px; overflow-wrap: anywhere; }
+.zapping-streamer { display: flex; align-items: center; min-width: 0; min-height: 44px; color: #b4ceef; text-underline-offset: 4px; }
 .zapping-channel .favorite { margin-left: auto; }
 .zap-live { flex-shrink: 0; color: #ff687a; font-size: 12px; font-weight: 800; }
 .zapping-info h3 { margin: 14px 0 10px; font-size: 17px; line-height: 1.7; overflow-wrap: anywhere; }
@@ -66,7 +68,6 @@
   .is-next .neighbor-copy { left: 6px; }
 }
 @media (max-width: 760px) {
-  .sidebar .nav-zapping { display: none; }
   .zapping-heading { gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
   .zapping-heading h2 { font-size: 23px; }
   .zapping-heading button { font-size: 12px; padding: 8px; }

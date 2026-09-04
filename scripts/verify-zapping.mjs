@@ -17,8 +17,9 @@ const videos = [
   { video_id: 'd', channel_id: 'cd', channel_title: 'Delta', title: 'D stream', main_characters: ['ガイル'], category: 'training', concurrent_viewers: 200, actual_start_time: '2026-09-04T04:00:00Z' },
 ];
 
-async function setupPage(viewport, url = 'http://frontend.test/', { empty = false, readyDelay = 0, apiDelay = 0 } = {}) {
+async function setupPage(viewport, url = 'http://frontend.test/', { empty = false, readyDelay = 0, apiDelay = 0, now } = {}) {
   const page = await browser.newPage({ viewport, locale: 'ja-JP' });
+  if (now) await page.clock.setFixedTime(new Date(now));
   page.on('pageerror', e => errors.push(e.message));
   await page.addInitScript(({ readyDelay, apiDelay }) => {
     window.SF6_API_BASE = location.origin;
@@ -28,7 +29,7 @@ async function setupPage(viewport, url = 'http://frontend.test/', { empty = fals
       constructor(id, options) {
         window.__yt.players++;
         window.__yt.lastPlayer = this;
-        this.videoId = options.videoId; this.muted = false;
+        this.videoId = options.videoId; this.muted = false; this.volume = 100;
         this.iframe = document.createElement('iframe');
         this.iframe.src = `https://www.youtube.com/embed/${this.videoId}`;
         document.getElementById(id).replaceWith(this.iframe);
@@ -42,6 +43,8 @@ async function setupPage(viewport, url = 'http://frontend.test/', { empty = fals
       isMuted() { return this.muted; }
       mute() { this.muted = true; }
       unMute() { this.muted = false; }
+      getVolume() { return this.volume; }
+      setVolume(value) { this.volume = value; }
       destroy() { window.__yt.destroys++; this.iframe.remove(); }
     } };
     if (!apiDelay) window.YT = window.__mockYT;
@@ -113,6 +116,7 @@ const assertPlayerShell = async (page, width) => {
   assert.equal(result.playerVars?.controls, 1, 'YouTube controls are enabled');
   assert.equal(result.playerVars?.disablekb, 0, 'YouTube keyboard controls are enabled');
   assert.equal(result.playerVars?.fs, 1, 'YouTube fullscreen is enabled');
+  assert.equal(result.playerVars?.playsinline, 1, 'YouTube inline playback is enabled');
 };
 const carouselState = page => page.locator('#app .zapping-carousel').evaluate(carousel => ({
   gesture: carousel.hasAttribute('data-zapping-gesture'),
@@ -162,11 +166,23 @@ try {
   const page = await setupPage({ width: 1440, height: 1000 });
   await wait(page, '.stream-card', 4);
   assert.equal(requests.length, 1, 'one initial live API request');
+  assert.equal(await page.locator('button[data-zap-start], .nav-item[data-view="zapping"]').count(), 0, 'no dedicated start CTA or watch navigation');
+  assert.equal(await page.locator('.stream-card a[target="_blank"]').count(), 0, 'LIVE cards have no external video links');
+  assert.doesNotMatch(await page.locator('body').innerText(), /ザッピング/);
+  await page.locator('.stream-card [data-fav="cb"]').click();
+  assert.equal(await page.locator('#page-title').innerText(), '配信中', 'favorite does not open viewer');
+  assert.equal(await page.locator('.stream-card [data-fav="cb"]').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.evaluate(() => window.__yt.players), 0, 'favorite does not start playback');
   assert.deepEqual(await page.locator('.stream-card').evaluateAll(es => es.map(e => e.dataset.videoId)), ['b', 'c', 'd', 'a']);
   await page.locator('[data-live-category="custom"]').click();
-  await page.locator('[data-zap-start=""]').click();
+  await page.locator('.stream-card .stream-title').first().click();
   await wait(page, '#persistent-player iframe');
   await page.waitForTimeout(30);
+  assert.equal(await page.evaluate(() => window.__yt.lastPlayer.isMuted()), false, 'first playback is not forced muted');
+  assert.equal(await page.locator('#page-title').innerText(), 'ライブ視聴');
+  assert.equal(await page.locator('.zapping-page a[target="_blank"], .zapping-page button[data-zap-streamer]').count(), 0, 'viewer has no duplicate external/profile buttons');
+  assert.equal(await page.locator('a[data-zap-streamer]').innerText(), 'Bravo', 'streamer name is the profile link');
+  assert.equal(await page.locator('.zapping-footnote').innerText(), '前後の配信を選んで切り替えられます。');
   assert.match(await page.locator('#persistent-player iframe').getAttribute('src'), /\/embed\/b/);
   assert.equal(await page.locator('.player-position').innerText(), '1 / 1');
   await assertPlayerShell(page, 1440);
@@ -196,7 +212,7 @@ try {
   assert.equal(await page.locator('.player-toolbar [data-player="return"]').isVisible(), true, 'mini player shows return control');
   assert.equal(await page.locator('.player-toolbar [data-player="close"]').isVisible(), true, 'mini player shows close control');
   await page.screenshot({ path: path.join(output, 'zapping-mini.png'), fullPage: true });
-  await page.locator('.nav-item[data-view="zapping"]').click();
+  await page.locator('[data-player="return"]').click();
   await wait(page, '.zapping-page');
   assert.equal(await page.locator('#persistent-player iframe').evaluate(el => el === window.__iframeBeforeReturn), true, 'large return keeps iframe node');
   assert.equal(await page.locator('.player-toolbar [data-player="return"]').isHidden(), true, 'large player hides mini return control');
@@ -210,19 +226,20 @@ try {
   assert.equal(await page.evaluate(() => window.__yt.loads.length), 1, 'streamer return does not reload video');
   assert.equal(requests.length, 1, 'start, mini, profile and return do not fetch any data');
   await page.screenshot({ path: path.join(output, 'zapping-desktop.png'), fullPage: true });
+  await page.evaluate(() => { window.__yt.lastPlayer.mute(); window.__yt.lastPlayer.setVolume(37); });
   await page.locator('.carousel-edge.is-next .carousel-card[data-zap-step="1"]').click();
+  assert.deepEqual(await page.evaluate(() => [window.__yt.lastPlayer.isMuted(), window.__yt.lastPlayer.getVolume()]), [true, 37], 'video changes preserve native mute and volume');
   assert.match(await page.locator('#persistent-player iframe').getAttribute('src'), /\/embed\/c/);
   assert.equal(await page.locator('#persistent-player iframe').count(), 1, 'next video keeps the same iframe shell');
   const beforeFav = requests.length;
   await page.locator('[data-fav="cc"]').click();
   assert.equal(requests.length, beforeFav, 'favorite does not fetch');
-  await page.locator('.nav-item[data-view="zapping"]').click();
   await page.locator('[data-zap-home]').click();
 
   await page.locator('[data-sort]').selectOption('newest');
   await page.waitForFunction(() => document.querySelector('.section')?.getAttribute('aria-busy') === 'false');
   const beforeZappingAPI = requests.length;
-  await page.locator('[data-zap-start=""]').click();
+  await page.locator('.stream-card .stream-title').first().click();
   assert.match(await page.locator('#persistent-player iframe').getAttribute('src'), /\/embed\/d/);
   const gesture = page.locator('#app .zapping-carousel[data-zapping-gesture]');
   const beforeRapid = await page.evaluate(() => window.__yt.loads.length);
@@ -381,6 +398,7 @@ try {
   assert.equal(requests.length, delayedRequests);
   await delayed.evaluate(() => window.__yt.lastPlayer.options.events.onAutoplayBlocked());
   assert.match(await delayed.locator('.player-message').innerText(), /再生ボタン/);
+  assert.equal(await delayed.evaluate(() => window.__yt.lastPlayer.isMuted()), false, 'blocked autoplay never falls back to mute');
   await delayed.evaluate(() => window.__yt.lastPlayer.options.events.onError());
   assert.match(await delayed.locator('.player-message').innerText(), /埋め込みで再生できません/);
   await delayed.waitForTimeout(100);
@@ -405,6 +423,60 @@ try {
     assert.equal(responsiveCarousel.slot, true, `${width}px carousel keeps centered slot`);
     await responsive.close();
   }
+  for (const width of [1440, 1200, 1024, 820, 761, 760, 390, 320]) {
+    const home = await setupPage({ width, height: 900 }, 'http://frontend.test/', { now: '2026-09-04T17:20:00Z' });
+    await wait(home, '.stream-card', 4);
+    assert.equal(await home.locator('#last-fetched').innerText(), '02:20 更新', 'same-day Japan time omits date');
+    const header = await home.locator('.topbar').evaluate(el => {
+      const rect = selector => { const r = document.querySelector(selector).getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; };
+      return { height: el.getBoundingClientRect().height, title: rect('#page-title'), search: rect('.search'), refresh: rect('#refresh-button'), overflow: document.documentElement.scrollWidth > innerWidth };
+    });
+    assert.equal(header.overflow, false, `${width}px home has no horizontal overflow`);
+    assert.ok(header.refresh.width >= 44 && header.refresh.height >= 44, 'refresh has a 44px tap target');
+    assert.ok(header.search.width >= (width <= 760 ? width - 34 : 200), `${width}px search retains usable width`);
+    if (width > 760) {
+      assert.ok(header.title.right <= header.search.x && header.search.right <= header.refresh.x, `${width}px title/search/refresh stay in one row`);
+      assert.ok(header.search.y < header.title.bottom && header.search.bottom > header.title.y, 'search aligns with title');
+      assert.ok(header.height < 110, `${width}px desktop header stays compact`);
+    } else {
+      assert.ok(header.title.bottom <= header.search.y, 'mobile search is below title');
+      assert.ok(header.refresh.bottom <= header.search.y, 'mobile refresh is beside title');
+      assert.ok(header.height < 155, `${width}px mobile header stays compact`);
+    }
+    await home.screenshot({ path: path.join(output, `header-${width}.png`), fullPage: true });
+    const beforeEntry = requests.length;
+    // Exercise real pointer hits on the title, thumbnail (including LIVE badge), and card body.
+    const card = home.locator('.stream-card[data-video-id="c"]');
+    if (width === 1440) await card.locator('.stream-title').press('Enter');
+    else {
+      const target = card.locator(width === 390 ? '.live-pill' : width === 320 ? '.stream-channel' : '.thumb');
+      await target.scrollIntoViewIfNeeded();
+      const box = await target.boundingBox();
+      await home.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    }
+    await wait(home, '#persistent-player iframe');
+    await home.waitForFunction(() => window.__yt.loads.at(-1) === 'c');
+    assert.equal(await home.locator('.player-position').innerText(), '2 / 4', 'clicked video starts in the filtered queue');
+    assert.equal(requests.length, beforeEntry, 'card entry reuses cached data');
+    await home.goBack();
+    await wait(home, '.stream-card', 4);
+    await home.goForward();
+    await wait(home, '.zapping-page');
+    assert.equal(await home.locator('.player-position').innerText(), '2 / 4', 'forward restores selected video');
+    assert.equal(requests.length, beforeEntry, 'history does not fetch');
+    await home.close();
+  }
+  const dates = await setupPage({ width: 1024, height: 900 }, 'http://frontend.test/', { now: '2026-09-04T14:55:00Z' });
+  await wait(dates, '.stream-card', 4);
+  assert.equal(await dates.locator('#last-fetched').innerText(), '23:55 更新');
+  const beforeMidnight = requests.length;
+  await dates.clock.setFixedTime(new Date('2026-09-04T15:05:00Z'));
+  await dates.locator('#search-input').fill('Bravo');
+  assert.equal(await dates.locator('#last-fetched').innerText(), '9/4 23:55 更新', 'Japan midnight adds the old date even on the same UTC day');
+  assert.equal(requests.length, beforeMidnight, 'formatting does not fetch data');
+  await dates.locator('.nav-item[data-view="help"]').click();
+  assert.doesNotMatch(await dates.locator('body').innerText(), /ザッピング|最終取得/);
+  await dates.close();
   assert.deepEqual(errors, [], 'no uncaught browser errors');
-  console.log('PASS: zapping queue/filter order, persistent iframe, mini/large return, favorites, gestures, URL/popstate and mobile overflow.');
+  console.log('PASS: LIVE card entry, queue/filter order, native audio, persistent iframe, mini/large return, favorites, gestures, URL/popstate, responsive headers and Japan update dates.');
 } finally { await browser.close(); }
