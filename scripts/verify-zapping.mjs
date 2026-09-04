@@ -67,6 +67,58 @@ async function setupPage(viewport, url = 'http://frontend.test/', { empty = fals
   return page;
 }
 const wait = (page, selector, count = 1) => page.waitForFunction(({ selector, count }) => document.querySelectorAll(selector).length === count, { selector, count });
+const playerCenter = async page => page.locator('#persistent-player .player-video').evaluate(el => {
+  const r = el.getBoundingClientRect();
+  return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+});
+const cdpSessions = new WeakMap();
+const dispatchTouch = async (page, type, point, id = 1) => {
+  let client = cdpSessions.get(page);
+  if (!client) {
+    client = await page.context().newCDPSession(page);
+    cdpSessions.set(page, client);
+  }
+  await client.send('Input.dispatchTouchEvent', {
+    type,
+    touchPoints: type === 'touchEnd' ? [] : [{ x: point.x, y: point.y, radiusX: 1, radiusY: 1, force: 1, id }],
+    modifiers: 0
+  });
+};
+const assertPlayerShell = async (page, width) => {
+  const result = await page.locator('#persistent-player').evaluate(shell => {
+    const video = shell.querySelector('.player-video');
+    const frame = shell.querySelector('iframe');
+    const controls = shell.querySelector('.player-controls');
+    const gesture = shell.querySelector('.player-gesture[data-zapping-gesture]');
+    const steps = shell.querySelectorAll('[data-zap-step]');
+    const buttons = [...shell.querySelectorAll('.player-controls button, .player-close')].filter(button => button.getClientRects().length > 0);
+    const sr = shell.getBoundingClientRect();
+    const vr = video?.getBoundingClientRect();
+    const fr = frame?.getBoundingClientRect();
+    const cr = controls?.getBoundingClientRect();
+    return {
+      frame: !!frame, gesture: !!gesture, steps: [...steps].map(step => step.dataset.zapStep),
+      noLegacyAppOverlay: !document.querySelector('.zapping-navigation, .zapping-gesture'),
+      shellHeight: sr.height,
+      videoHeight: vr?.height, frameHeight: fr?.height,
+      controlsInside: !!cr && cr.top >= vr.top && cr.bottom <= vr.bottom,
+      buttonsInside: buttons.every(button => { const r = button.getBoundingClientRect(); return r.top >= vr.top && r.bottom <= vr.bottom && r.left >= vr.left && r.right <= vr.right; }),
+      frameInside: !!fr && fr.left >= vr.left && fr.right <= vr.right && fr.top >= vr.top && fr.bottom <= vr.bottom,
+      playerVars: window.__yt.lastPlayer?.options?.playerVars
+    };
+  });
+  assert.equal(result.frame, true, `${width}px player has iframe`);
+  assert.equal(result.gesture, true, `${width}px player has gesture overlay`);
+  assert.equal(result.noLegacyAppOverlay, true, `${width}px app has no legacy gesture/navigation panel`);
+  assert.deepEqual(result.steps, ['-1', '1'], `${width}px player owns previous/next controls`);
+  assert.ok(Math.abs(result.shellHeight - result.videoHeight) < 1, `${width}px player shell has no lower panel`);
+  assert.ok(Math.abs(result.videoHeight - result.frameHeight) < 1, `${width}px iframe fills video height`);
+  assert.equal(result.controlsInside, true, `${width}px controls stay over video`);
+  assert.equal(result.buttonsInside, true, `${width}px all player buttons stay inside video`);
+  assert.equal(result.frameInside, true, `${width}px iframe stays inside video`);
+  assert.equal(result.playerVars?.controls, 0, 'YouTube controls are disabled');
+  assert.equal(result.playerVars?.disablekb, 1, 'YouTube keyboard controls are disabled');
+};
 
 try {
   const page = await setupPage({ width: 1440, height: 1000 });
@@ -78,23 +130,35 @@ try {
   await wait(page, '#persistent-player iframe');
   await page.waitForTimeout(30);
   assert.match(await page.locator('#persistent-player iframe').getAttribute('src'), /\/embed\/b/);
-  assert.equal(await page.locator('.zapping-navigation span').innerText(), '1 / 1');
+  assert.equal(await page.locator('.player-position').innerText(), '1 / 1');
+  await assertPlayerShell(page, 1440);
   assert.equal(requests.length, 1, 'start reuses loaded list');
   await page.screenshot({ path: path.join(output, 'zapping-desktop.png'), fullPage: true });
   await page.locator('[data-player="play"]').click();
-  assert.equal(await page.locator('[data-player="play"]').innerText(), '停止');
+  assert.match(await page.locator('[data-player="play"]').getAttribute('aria-label'), /一時停止|停止/);
   await page.locator('[data-player="play"]').click();
-  assert.equal(await page.locator('[data-player="play"]').innerText(), '再生');
+  assert.match(await page.locator('[data-player="play"]').getAttribute('aria-label'), /再生/);
   await page.locator('[data-player="mute"]').click();
-  assert.equal(await page.locator('[data-player="mute"]').innerText(), 'ミュート');
+  assert.equal(await page.locator('[data-player="mute"]').getAttribute('aria-label'), 'ミュート');
+  for (const action of ['play', 'mute', 'close', 'return']) {
+    const button = page.locator(`[data-player="${action}"]`);
+    assert.equal(await button.locator('svg').count(), 1, `${action} uses an SVG icon`);
+    assert.ok(await button.getAttribute('title'), `${action} has a title`);
+  }
 
   await page.locator('[data-zap-home]').click();
   await page.locator('#persistent-player iframe').evaluate(el => { window.__iframeBeforeReturn = el; });
   assert.equal(await page.locator('#persistent-player').evaluate(el => el.classList.contains('is-mini')), true);
+  await assertPlayerShell(page, 'desktop mini');
+  assert.equal(await page.locator('[data-player="return"]').isVisible(), true);
+  assert.equal(await page.locator('[data-zap-step="1"]').isHidden(), true);
+  assert.equal(await page.locator('[data-player="return"]').isVisible(), true, 'mini player shows large return control');
+  assert.equal(await page.locator('[data-zap-step]').first().isHidden(), true, 'mini player hides zap navigation controls');
   await page.screenshot({ path: path.join(output, 'zapping-mini.png'), fullPage: true });
   await page.locator('.nav-item[data-view="zapping"]').click();
   await wait(page, '.zapping-page');
   assert.equal(await page.locator('#persistent-player iframe').evaluate(el => el === window.__iframeBeforeReturn), true, 'large return keeps iframe node');
+  assert.equal(await page.locator('[data-player="return"]').isHidden(), true, 'large player hides return control');
   await page.locator('[data-zap-home]').click();
   await page.locator('[data-live-category="all"]').click();
   await page.locator('[data-zap-start="b"]').click();
@@ -107,7 +171,7 @@ try {
   await page.screenshot({ path: path.join(output, 'zapping-desktop.png'), fullPage: true });
   await page.locator('[data-zap-step="1"]').click();
   assert.match(await page.locator('#persistent-player iframe').getAttribute('src'), /\/embed\/c/);
-  assert.equal(await page.locator('[data-player="mute"]').innerText(), 'ミュート', 'unmuted state carries to next video');
+  assert.equal(await page.locator('[data-player="mute"]').getAttribute('aria-label'), 'ミュート', 'unmuted state carries to next video');
   const beforeFav = requests.length;
   await page.locator('[data-fav="cc"]').click();
   assert.equal(requests.length, beforeFav, 'favorite does not fetch');
@@ -127,43 +191,46 @@ try {
   assert.equal(await page.evaluate(n => window.__yt.loads.length - n, beforeRapid), 3, 'four feeds can be switched consecutively');
   assert.equal(requests.length, beforeZappingAPI, 'starting and switching across four feeds causes zero API requests');
   const beforeWheel = await page.evaluate(() => window.__yt.loads.length);
-  for (let i = 0; i < 10; i++) await page.locator('[data-zapping-gesture]').first().dispatchEvent('wheel', { deltaY: -100 });
+  const gesture = page.locator('.player-gesture[data-zapping-gesture]');
+  const center = await playerCenter(page);
+  await page.mouse.move(center.x, center.y);
+  for (let i = 0; i < 10; i++) await page.mouse.wheel(0, -100);
   await page.waitForTimeout(30);
   assert.equal(await page.evaluate(n => window.__yt.loads.length - n, beforeWheel), 1, 'wheel burst advances once');
-  await page.locator('[data-zapping-gesture]').first().dispatchEvent('wheel', { deltaY: 1 });
+  await page.mouse.wheel(0, 1);
   assert.equal(await page.evaluate(n => window.__yt.loads.length - n, beforeWheel), 1, 'small wheel is ignored');
-  await page.locator('[data-zapping-gesture]').first().dispatchEvent('wheel', { deltaX: 100, deltaY: 100 });
+  await page.mouse.wheel(100, 100);
   assert.equal(await page.evaluate(n => window.__yt.loads.length - n, beforeWheel), 1, 'horizontal wheel is ignored');
   await page.locator('[data-zap-home]').click();
   await page.locator('[data-zap-start="b"]').click();
   const beforeTouch = await page.evaluate(() => window.__yt.loads.length);
-  await page.evaluate(() => {
-    const target = document.querySelector('[data-zapping-gesture]');
-    const touch = (type, x, y) => target.dispatchEvent(new TouchEvent(type, { bubbles: true, touches: type === 'touchstart' ? [new Touch({ identifier: 1, target, clientX: x, clientY: y })] : [], changedTouches: [new Touch({ identifier: 1, target, clientX: x, clientY: y })] }));
-    touch('touchstart', 120, 220); touch('touchend', 120, 120);
-  });
+  const touchStart = await playerCenter(page);
+  await dispatchTouch(page, 'touchStart', touchStart);
+  await dispatchTouch(page, 'touchMove', { x: touchStart.x, y: touchStart.y - 100 });
+  await dispatchTouch(page, 'touchEnd', { x: touchStart.x, y: touchStart.y - 100 });
   await page.waitForTimeout(20);
   assert.equal(await page.evaluate(n => window.__yt.loads.length - n, beforeTouch), 1, 'vertical swipe advances');
   const afterTouch = await page.evaluate(() => window.__yt.loads.length);
-  await page.evaluate(() => {
-    const target = document.querySelector('[data-zapping-gesture]');
-    const touch = (type, x, y) => target.dispatchEvent(new TouchEvent(type, { bubbles: true, touches: type === 'touchstart' ? [new Touch({ identifier: 2, target, clientX: x, clientY: y })] : [], changedTouches: [new Touch({ identifier: 2, target, clientX: x, clientY: y })] }));
-    touch('touchstart', 120, 220); touch('touchend', 220, 220);
-  });
+  const horizontalStart = await playerCenter(page);
+  await dispatchTouch(page, 'touchStart', horizontalStart, 2);
+  await dispatchTouch(page, 'touchMove', { x: horizontalStart.x + 100, y: horizontalStart.y }, 2);
+  await dispatchTouch(page, 'touchEnd', { x: horizontalStart.x + 100, y: horizontalStart.y }, 2);
   await page.waitForTimeout(20);
   assert.equal(await page.evaluate(n => window.__yt.loads.length - n, afterTouch), 0, 'horizontal swipe ignored');
   await page.waitForTimeout(700); // cooldown from the previous wheel burst
-  await page.locator('[data-zapping-gesture]').first().dispatchEvent('wheel', { deltaY: -100 });
+  const wheelPoint = await playerCenter(page);
+  await page.mouse.move(wheelPoint.x, wheelPoint.y);
+  await page.mouse.wheel(0, -100);
   await page.waitForTimeout(20);
   assert.match(await page.locator('#persistent-player iframe').getAttribute('src'), /\/embed\/b/);
-  await page.locator('[data-zapping-gesture]').first().press('ArrowDown');
+  await gesture.press('ArrowDown');
   await page.waitForTimeout(20);
   assert.match(await page.locator('#persistent-player iframe').getAttribute('src'), /\/embed\/a/);
   const beforeRepeat = await page.evaluate(() => window.__yt.loads.length);
-  await page.locator('[data-zapping-gesture]').first().evaluate(el => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, repeat: true })));
+  await gesture.evaluate(el => el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true, repeat: true })));
   assert.equal(await page.evaluate(n => window.__yt.loads.length - n, beforeRepeat), 0, 'keydown repeat ignored');
   await page.waitForTimeout(700);
-  for (let i = 0; i < 10; i++) await page.locator('.zapping-gesture').dispatchEvent('wheel', { deltaY: -5 });
+  for (let i = 0; i < 10; i++) await page.mouse.wheel(0, -5);
   assert.match(await page.locator('#persistent-player iframe').getAttribute('src'), /\/embed\/b/);
   assert.equal(requests.length, beforeZappingAPI, 'gestures cause zero API requests');
   await page.locator('[data-player="close"]').click();
@@ -173,7 +240,7 @@ try {
   await page.locator('#search-input').fill('Bravo');
   const beforeFilteredStart = requests.length;
   await page.locator('[data-zap-start="b"]').click();
-  assert.equal(await page.locator('.zapping-navigation span').innerText(), '1 / 1', 'character and search are inherited together');
+  assert.equal(await page.locator('.player-position').innerText(), '1 / 1', 'character and search are inherited together');
   assert.equal(requests.length, beforeFilteredStart);
   await page.close();
 
@@ -189,22 +256,45 @@ try {
   await wait(direct, '.zapping-page');
   assert.equal(await direct.locator('#persistent-player iframe').evaluate(el => el === window.__originalFrame), true, 'browser back restores large view without replacing iframe');
   assert.equal(requests.length, mobileRequests);
-  await direct.locator('.zapping-gesture').evaluate(target => {
-    const point = y => new Touch({ identifier: 1, target, clientX: 100, clientY: y });
-    target.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, touches: [point(220)] }));
-    target.dispatchEvent(new TouchEvent('touchend', { bubbles: true, touches: [], changedTouches: [point(120)] }));
-  });
+  await assertPlayerShell(direct, 390);
+  const directTouch = await playerCenter(direct);
+  await dispatchTouch(direct, 'touchStart', directTouch);
+  await dispatchTouch(direct, 'touchMove', { x: directTouch.x, y: directTouch.y - 100 });
+  assert.match(await direct.locator('.player-swipe-preview').innerText(), /NEXT.*Delta.*D stream/s);
+  await direct.screenshot({ path: path.join(output, 'zapping-swipe-preview.png') });
+  await dispatchTouch(direct, 'touchEnd', { x: directTouch.x, y: directTouch.y - 100 });
   assert.match(await direct.locator('#persistent-player iframe').getAttribute('src'), /\/embed\/d/);
   await direct.screenshot({ path: path.join(output, 'zapping-mobile-390.png'), fullPage: true });
+  await dispatchTouch(direct, 'touchStart', directTouch);
+  await dispatchTouch(direct, 'touchMove', { x: directTouch.x, y: directTouch.y + 75 });
+  assert.match(await direct.locator('.player-swipe-preview').innerText(), /PREV.*Charlie/s);
+  await dispatchTouch(direct, 'touchEnd', { x: directTouch.x, y: directTouch.y + 75 });
+  assert.match(await direct.locator('#persistent-player iframe').getAttribute('src'), /\/embed\/c/, 'mobile downward flick goes to previous stream');
+  await direct.evaluate(() => window.__yt.lastPlayer.playVideo());
+  await direct.evaluate(() => document.activeElement?.blur());
+  await direct.waitForTimeout(2700);
+  assert.equal(await direct.locator('#persistent-player').evaluate(el => el.classList.contains('controls-visible')), false, 'mobile controls auto-hide');
+  await dispatchTouch(direct, 'touchStart', directTouch);
+  await dispatchTouch(direct, 'touchEnd', directTouch);
+  assert.equal(await direct.locator('#persistent-player').evaluate(el => el.classList.contains('controls-visible')), true, 'real mobile tap restores hidden controls');
+  assert.equal(requests.length, mobileRequests, 'mobile swipes and control changes never fetch data');
   await direct.evaluate(() => history.pushState({}, '', '?view=zapping&video=unknown'));
   await direct.evaluate(() => dispatchEvent(new PopStateEvent('popstate')));
   await wait(direct, '.zapping-page');
   assert.match(await direct.locator('.zapping-page').innerText(), /現在の一覧|先頭/);
   await direct.setViewportSize({ width: 320, height: 760 });
   await direct.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await assertPlayerShell(direct, 320);
   assert.equal(await direct.locator('#persistent-player iframe').evaluate(el => el.getBoundingClientRect().right <= innerWidth && el.getBoundingClientRect().height >= 200), true, '320px iframe stays fully visible with the required minimum height');
   assert.equal(await direct.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, '320px no overflow');
   await direct.screenshot({ path: path.join(output, 'zapping-mobile-320.png'), fullPage: true });
+  await direct.locator('[data-zap-home]').click();
+  await assertPlayerShell(direct, '320px mini');
+  await direct.screenshot({ path: path.join(output, 'zapping-mini-320.png'), fullPage: true });
+  const beforeMiniReturn = await direct.evaluate(() => window.__yt.loads.length);
+  await direct.locator('[data-player="return"]').click();
+  assert.equal(await direct.evaluate(() => window.__yt.loads.length), beforeMiniReturn, 'mobile mini return does not reload video');
+  assert.equal(await direct.locator('#persistent-player iframe').evaluate(el => el === window.__originalFrame), true);
   await direct.close();
   const empty = await setupPage({ width: 320, height: 760 }, 'http://frontend.test/?view=zapping', { empty: true });
   await wait(empty, '.empty');
@@ -225,6 +315,8 @@ try {
   assert.match(await delayed.locator('.player-message').innerText(), /再生ボタン/);
   await delayed.evaluate(() => window.__yt.lastPlayer.options.events.onError());
   assert.match(await delayed.locator('.player-message').innerText(), /埋め込みで再生できません/);
+  await delayed.waitForTimeout(2700);
+  assert.equal(await delayed.locator('#persistent-player').evaluate(el => el.classList.contains('controls-visible')), true, 'player error keeps controls visible');
   await delayed.locator('[data-player="close"]').click();
   await delayed.locator('[data-zap-start="b"]').click();
   await delayed.locator('[data-player="close"]').click();
@@ -232,6 +324,26 @@ try {
   assert.equal(await delayed.locator('#persistent-player').isHidden(), true, 'late onReady cannot reopen a closed player');
   assert.equal(await delayed.locator('#persistent-player iframe').count(), 0);
   await delayed.close();
+  for (const width of [1024, 1440]) {
+    const responsive = await setupPage({ width, height: 900 }, 'http://frontend.test/?view=zapping&video=a');
+    await wait(responsive, '.zapping-page');
+    await wait(responsive, '#persistent-player iframe');
+    await assertPlayerShell(responsive, width);
+    await responsive.evaluate(() => window.__yt.lastPlayer.options.events.onStateChange({ target: window.__yt.lastPlayer, data: 1 }));
+    const gestureBox = await playerCenter(responsive);
+    await responsive.mouse.move(gestureBox.x, gestureBox.y);
+    assert.equal(await responsive.locator('#persistent-player').evaluate(el => el.classList.contains('controls-visible')), true, `${width}px mouse movement reveals controls`);
+    await responsive.mouse.click(gestureBox.x, gestureBox.y);
+    assert.equal(await responsive.locator('#persistent-player').evaluate(el => el.classList.contains('controls-visible')), true, `${width}px tap keeps controls visible`);
+    await responsive.locator('[data-player="play"]').evaluate(button => button.focus({ focusVisible: true }));
+    await responsive.waitForTimeout(2700);
+    assert.equal(await responsive.locator('#persistent-player').evaluate(el => el.classList.contains('controls-visible')), true, `${width}px focused control stays visible`);
+    await responsive.evaluate(() => document.activeElement?.blur());
+    await responsive.mouse.move(gestureBox.x + 1, gestureBox.y + 1);
+    await responsive.waitForTimeout(2700);
+    assert.equal(await responsive.locator('#persistent-player').evaluate(el => el.classList.contains('controls-visible')), false, `${width}px controls auto-hide`);
+    await responsive.close();
+  }
   assert.deepEqual(errors, [], 'no uncaught browser errors');
   console.log('PASS: zapping queue/filter order, persistent iframe, mini/large return, favorites, gestures, URL/popstate and mobile overflow.');
 } finally { await browser.close(); }
