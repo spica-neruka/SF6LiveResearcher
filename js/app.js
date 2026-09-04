@@ -29,7 +29,7 @@ const state = {
   zapping: { items: [], index: 0 }, selectedStreamer: null,
 };
 const player = createZappingPlayer({ onReturn: () => startZapping(null, true), onClose: closeZapping, onMessage: announce });
-bindZappingGestures({ active: () => state.view === 'zapping', step: stepZapping, reveal: () => player.reveal(), preview: direction => player.preview(direction) });
+bindZappingGestures({ active: () => state.view === 'zapping', step: stepZapping });
 
 function readFavorites() {
   try {
@@ -287,10 +287,13 @@ function startZapping(id, resume = false) {
 }
 function selectZapping(index) {
   if (index < 0 || index >= state.zapping.items.length || index === state.zapping.index) return;
+  const motion = index > state.zapping.index ? 'next' : 'previous';
   state.zapping.index = index;
   state.zapping.missing = false;
   writeRoute(true);
   render();
+  const carousel = $('.zapping-carousel');
+  if (carousel) carousel.dataset.motion = motion;
   announce(`${currentZapping().name}の配信に切り替えました。`);
 }
 function stepZapping(direction) { selectZapping(state.zapping.index + direction); }
@@ -300,23 +303,33 @@ function closeZapping() {
   if (state.view === 'zapping') navigate('home', { preserveCharacter: true });
   else render();
 }
+function carouselNeighbor(item, direction) {
+  const previous = direction < 0;
+  const label = previous ? '前の配信' : '次の配信';
+  return `<div class="carousel-edge ${previous ? 'is-previous' : 'is-next'}">
+    <button type="button" class="carousel-card" data-zap-step="${direction}" ${item ? '' : 'disabled'} aria-label="${esc(item ? `${label}: ${item.name}` : previous ? '最初の配信です' : '最後の配信です')}">
+      ${item ? imageMarkup(item.image, 'carousel-thumbnail') : '<span class="carousel-end-art" aria-hidden="true"></span>'}
+      <span class="neighbor-copy"><small>${label} <span aria-hidden="true">${previous ? '↖' : '↘'}</span></small>${item ? `<span class="neighbor-live">● LIVE</span><strong>${esc(item.name)}</strong>` : `<strong>${previous ? 'ここが先頭' : 'ここが最後'}</strong>`}</span>
+    </button></div>`;
+}
 function zappingPage() {
   const item = currentZapping();
   if (!item) return `<section>${sectionHead('次の「見たい」へ。', '配信中の一覧から、気になる配信を続けて視聴。')}${stateNotice('live')}${!state.live.busy && !state.live.error ? '<div class="empty"><p>現在の条件で視聴できるLIVE配信がありません。</p></div>' : ''}${button('配信中一覧へ', 'data-zap-home')}</section>`;
   const { items, index, filters } = state.zapping;
   const description = [CHARACTERS.find(c => c.id === filters.character)?.name, LIVE_CATEGORIES[filters.category], filters.q ? `「${filters.q}」` : '', filters.sort === 'newest' ? '新着順' : '視聴者数順'].filter(Boolean).join(' · ');
   return `<section class="zapping-page">
-    <div class="zapping-heading"><div><p class="eyebrow">LIVE ZAPPING</p><h2>次の「見たい」へ。</h2><p>${esc(description)} · ${items.length}配信</p></div>${button('一覧へ戻る', 'data-zap-home')}</div>
+    <div class="zapping-heading"><div><p class="eyebrow">LIVE ZAPPING</p><h2>次の「見たい」へ。</h2><p>${esc(description)} · <span class="player-position">${index + 1} / ${items.length}</span></p></div><div class="zapping-header-actions">${button('一覧へ戻る', 'data-zap-home')}${button('×', 'data-zap-close aria-label="ザッピングを閉じる" title="ザッピングを閉じる"', 'action-button zapping-close')}</div></div>
     ${state.zapping.missing ? '<p class="state-message">指定された動画は現在の一覧にないため、先頭の配信を表示しています。</p>' : ''}
-    <div class="zapping-layout"><div class="zapping-main">
+    <div class="zapping-carousel" data-zapping-gesture aria-label="前後の配信カルーセル">
+      ${carouselNeighbor(items[index - 1], -1)}
       <div id="zapping-player-slot" aria-label="YouTubeプレイヤー表示領域"></div>
+      ${carouselNeighbor(items[index + 1], 1)}
+    </div><div class="zapping-main">
       <div class="zapping-info"><div class="zapping-channel"><span class="zap-live">● LIVE</span><strong>${esc(item.name)}</strong>${favoriteButton(item.channelId, item.name)}</div>
       <h3>${esc(item.title)}</h3><div class="meta"><span>${item.viewers != null ? `${Number(item.viewers).toLocaleString()}人が視聴中` : '視聴者数未取得'}</span><span>${esc(LIVE_CATEGORIES[item.category] || 'その他')}</span>${item.characters.length ? `<span>${esc(item.characters.join(' / '))}</span>` : ''}</div>
       <div class="zapping-links">${button('配信者を見る', 'data-zap-streamer')}<a href="${esc(item.url)}" target="_blank" rel="noopener noreferrer">YouTubeで開く ↗</a></div></div>
-      <p class="zapping-footnote">映像を上下スワイプ・ホイール、または ↑ / ↓ キーで配信を切り替えます。タップで操作アイコンを表示します。配信情報は開始時の一覧です。${state.live.hasNext ? '続きは配信中一覧の「もっと見る」で取得できます。' : ''}</p>
-    </div><aside class="zapping-next" aria-label="次の配信"><h3>次の配信 <span>${items.length - index - 1}</span></h3>
-    ${items.slice(index + 1).map((next, offset) => `<button type="button" data-zap-index="${index + offset + 1}" class="zapping-next-card">${imageMarkup(next.image, 'zap-thumbnail')}<span><strong>${esc(next.name)}</strong><span>${esc(next.title)}</span><small>${next.viewers != null ? `${Number(next.viewers).toLocaleString()}人 · ` : ''}${esc(LIVE_CATEGORIES[next.category] || 'その他')}</small></span></button>`).join('') || '<p class="zapping-footnote">最後の配信です。「前へ」で戻れます。</p>'}
-    </aside></div></section>`;
+      <p class="zapping-footnote">前後のサムネイル、または ← / ↑・→ / ↓ キーで配信を切り替えます。サムネイル周辺では上下スワイプ・ホイールも使えます。映像内はYouTube標準操作です。配信情報は開始時の一覧です。${state.live.hasNext ? '続きは配信中一覧の「もっと見る」で取得できます。' : ''}</p>
+    </div></section>`;
 }
 function selectedStreamerPage() {
   const item = state.selectedStreamer;
@@ -361,7 +374,7 @@ function explorePage() {
 function infoPage() {
   if (state.view === 'settings') return `<section class="page-card"><h2>お気に入りの保存</h2><p>お気に入りはこのブラウザに保存されます。ログインは不要です。別の端末やブラウザとは共有されません。</p><p>ブラウザのサイトデータを削除すると、お気に入りも消えます。</p>${button('お気に入りを確認する', 'data-go="favorites"')}</section>`;
   if (state.view === 'notice') return `<section class="page-card"><h2>お知らせ</h2><div class="notice"><strong>2026/09/04</strong><p>スマホでの検索、配信者の絞り込み、お気に入りの配信状況表示を改善しました。</p></div><div class="notice"><strong>2026/09/03</strong><p>配信カテゴリによる絞り込みに対応しました。</p></div><div class="notice"><strong>2026/09/02</strong><p>配信者情報を定期的に更新し、より新しい情報を表示できるようにしています。</p></div><div class="notice"><strong>2026/09/01</strong><p>SF6 LIVE RESEARCHERを公開しました。</p></div></section>`;
-  return `<section class="page-card"><h2>使い方</h2><h3>見たい配信を探す</h3><p>配信中・配信予定では、タイトル、配信者名、キャラクターで検索できます。キャラクターとカテゴリを組み合わせて絞り込めます。配信者ページのキーワード検索は、取得済みの配信者名・チャンネル名を絞り込みます。未取得の配信者も探す場合は「もっと見る」で続きを取得してください。</p><h3>配信を見る</h3><p>サムネイルやタイトルを選ぶと、YouTubeを新しいタブで開きます。キーボードではTabキーでリンクを選び、Enterキーで開けます。</p><h3>ザッピングで見る</h3><p>配信中一覧やカードの「ザッピング」で、いまの検索・キャラクター・カテゴリ・並び順を引き継いで視聴できます。映像上でホイール・上下スワイプ、または↑ / ↓キーと映像上の矢印で切り替えます。タップ・マウス移動で操作アイコンを表示します。再生・一時停止、ミュート、閉じるも映像上で操作できます。最初はミュートで開始し、音声はプレイヤーで有効にできます。</p><p>一覧や配信者情報に移動すると、右下のミニプレイヤーで視聴を続けられます。「大型に戻る」で復帰、「閉じる」で終了します。配信を切り替えても一覧の再取得は行いません。最新の配信を探す場合は一覧で更新し、再度ザッピングを開始してください。</p><h3>お気に入り</h3><p>カードの♡で配信者を登録できます。♥で解除できます。オフラインの配信者も表示され、配信予定があれば開始時刻を確認できます。</p><h3>表示情報について</h3><p>YouTubeの公開情報を自動収集しています。実際の配信状況や視聴者数とは時間差があります。キャラクター情報は配信タイトルなどから推定するため、実際の使用キャラクターと異なる場合があります。</p><p>最終取得は、この画面で情報を受け取った時刻です。情報は最大5分程度キャッシュされ、収集間隔による遅れもあります。「更新」を押してもすぐに変わらない場合があります。開始予定の日時は日本時間（JST）です。</p></section>`;
+  return `<section class="page-card"><h2>使い方</h2><h3>見たい配信を探す</h3><p>配信中・配信予定では、タイトル、配信者名、キャラクターで検索できます。キャラクターとカテゴリを組み合わせて絞り込めます。配信者ページのキーワード検索は、取得済みの配信者名・チャンネル名を絞り込みます。未取得の配信者も探す場合は「もっと見る」で続きを取得してください。</p><h3>配信を見る</h3><p>サムネイルやタイトルを選ぶと、YouTubeを新しいタブで開きます。キーボードではTabキーでリンクを選び、Enterキーで開けます。</p><h3>ザッピングで見る</h3><p>配信中一覧やカードの「ザッピング」で、いまの検索・キャラクター・カテゴリ・並び順を引き継いで視聴できます。前後のサムネイルをクリック・タップして配信を切り替えます。PCでは左右、スマホでは上下に次の配信が見えます。Player外では← / ↑キーで前、→ / ↓キーで次へ移動でき、サムネイル周辺でホイール・上下スワイプも使えます。再生・シーク・音量・設定・全画面はYouTube標準UIを操作してください。ザッピングは画面上部の×で閉じられます。最初はミュートで開始し、音声はプレイヤーで有効にできます。</p><p>一覧や配信者情報に移動すると、右下のミニプレイヤーで視聴を続けられます。「大型に戻る」で復帰、「閉じる」で終了します。配信を切り替えても一覧の再取得は行いません。最新の配信を探す場合は一覧で更新し、再度ザッピングを開始してください。</p><h3>お気に入り</h3><p>カードの♡で配信者を登録できます。♥で解除できます。オフラインの配信者も表示され、配信予定があれば開始時刻を確認できます。</p><h3>表示情報について</h3><p>YouTubeの公開情報を自動収集しています。実際の配信状況や視聴者数とは時間差があります。キャラクター情報は配信タイトルなどから推定するため、実際の使用キャラクターと異なる場合があります。</p><p>最終取得は、この画面で情報を受け取った時刻です。情報は最大5分程度キャッシュされ、収集間隔による遅れもあります。「更新」を押してもすぐに変わらない場合があります。開始予定の日時は日本時間（JST）です。</p></section>`;
 }
 function visibleResources() {
   if (state.view === 'home') return ['live'];
@@ -409,7 +422,7 @@ function render() {
   $('#last-fetched').hidden = !keys.length;
   $('#app').innerHTML = state.view === 'zapping' ? zappingPage() : state.view === 'streamer' ? selectedStreamerPage() : state.view === 'home' ? videosPage('live') : state.view === 'upcoming' ? videosPage('upcoming') : state.view === 'streamers' ? streamersPage() : state.view === 'favorites' ? favoritesPage() : state.view === 'characters' ? charactersPage() : state.view === 'explore' ? explorePage() : infoPage();
   if (keys.length) $('#app').insertAdjacentHTML('beforeend', '<p class="freshness-note">最終取得は画面で情報を受け取った時刻です。情報の反映には時間差があり、更新しても最大5分程度は同じ情報が表示される場合があります。</p>');
-  if (currentZapping()) void player.show(currentZapping(), { index: state.zapping.index, total: state.zapping.items.length, previous: state.zapping.items[state.zapping.index - 1], next: state.zapping.items[state.zapping.index + 1] });
+  if (currentZapping()) void player.show(currentZapping());
   player.layout();
   if (focus) {
     const replacement = [...$('#app').querySelectorAll(`[${focus.key}]`)].find(element => element.getAttribute(focus.key) === focus.value && element.getAttribute('tabindex') !== '-1');
@@ -456,6 +469,7 @@ function toggleFavorite(id) {
 document.addEventListener('click', event => {
   const control = event.target.closest('button');
   if (!control || control.disabled) return;
+  if (control.hasAttribute('data-zap-close')) return closeZapping();
   if (control.hasAttribute('data-zap-start')) return startZapping(control.dataset.zapStart);
   if (control.hasAttribute('data-zap-resume')) return startZapping(null, true);
   if (control.hasAttribute('data-zap-step')) return stepZapping(Number(control.dataset.zapStep));
