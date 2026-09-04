@@ -1,26 +1,17 @@
+/* Favorite cards share the app's status classes and keep scheduled details visible. */
 .channel-avatar-wrap{position:relative}
-/* Favorites use their own single status badge. */
-.channel-avatar-wrap .live-badge,.channel-avatar-wrap .favorite-status-badge{position:absolute;top:8px;left:8px;z-index:3;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;height:22px;min-height:22px;padding:2px 7px;border-radius:6px;background:var(--live,#ff3f55);color:#fff;font-size:11px;font-weight:800;letter-spacing:.08em;line-height:1;box-shadow:0 2px 8px rgba(0,0,0,.35);pointer-events:none}
-.channel-avatar-wrap .favorite-status-badge.upcoming{background:var(--gold,#d6b36a);color:#090b10}
-.channel-avatar-wrap .favorite-status-badge.offline{background:rgba(8,10,15,.78);color:#c3c9d3;border:1px solid rgba(255,255,255,.12)}
-.streamer-card[data-favorite-channel]{transition:.18s ease}
+.channel-avatar-wrap .status-badge,.channel-avatar-wrap .live-badge,.channel-avatar-wrap .favorite-status-badge{position:absolute;top:8px;left:8px;z-index:3;display:inline-flex;align-items:center;min-height:24px;padding:3px 8px;border-radius:6px;background:var(--live);color:#fff;font-size:11px;font-weight:800;letter-spacing:.05em;line-height:1;box-shadow:0 2px 8px #0006}
+.status-badge[data-status="upcoming"],.favorite-status-badge.upcoming{background:var(--gold);color:#090b10}
+.status-badge[data-status="offline"],.favorite-status-badge.offline{background:#10141acc;color:#c3c9d3;border:1px solid #ffffff1f}
+.streamer-card[data-favorite-channel]{transition:transform .18s ease,border-color .18s ease}
 .streamer-card[data-favorite-channel]:hover{transform:translateY(-2px);border-color:#3b424e}
 .streamer-card[data-favorite-channel] .streamer-row strong{margin-top:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.streamer-card[data-favorite-channel] .favorite{flex:0 0 auto;padding:2px 0}
-.streamer-card[data-favorite-channel] .streamer-stats{margin-top:10px}
+.streamer-card[data-favorite-channel] .favorite{flex:0 0 auto;padding:2px 4px}
 .favorite-missing-note{margin:.35rem 0 0;color:#8e96a3;font-size:12px}
-.streamer-card[data-favorite-open]{cursor:pointer}
-
-/* Streamer page status: app.js is the single renderer. */
-.streamer-card:not([data-favorite-channel]) .channel-avatar-wrap::before{content:'OFFLINE';position:absolute;left:8px;top:8px;z-index:10;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;height:22px;min-height:22px;padding:2px 7px;border-radius:6px;background:rgba(8,10,15,.82);color:#c3c9d3;border:1px solid rgba(255,255,255,.12);font-size:11px;font-weight:800;letter-spacing:.08em;line-height:1;box-shadow:0 2px 8px rgba(0,0,0,.35);pointer-events:none}
-.streamer-card:not([data-favorite-channel]).is-live .channel-avatar-wrap::before{content:'LIVE';background:var(--live,#ff3f55);color:#fff;border:0}
-.streamer-card:not([data-favorite-channel]) .channel-avatar-wrap::after{content:none}
-.streamer-card:not([data-favorite-channel]).is-live .channel-avatar-wrap::after{content:'';position:absolute;left:0;top:0;right:0;height:2px;background:var(--live,#ff3f55);z-index:9;pointer-events:none}
-.streamer-card:not([data-favorite-channel]){cursor:pointer}
-.streamer-card:not([data-favorite-channel]) .streamer-row strong{margin-top:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-/* Favorites: LIVE cards get the red top accent. The live page intentionally stays visually clean. */
-.stream-card{position:relative;overflow:hidden}
-.stream-card:has(.live-pill)::before{content:'';position:absolute;left:0;top:0;right:0;height:2px;background:var(--live,#ff3f55);z-index:5;pointer-events:none}
-.live-grid .stream-card::before{display:none}
-.live-grid .live-pill{display:none}
+.favorite-scheduled{display:block!important;margin-top:6px;color:#c7ced8;font-size:12px}
+.stream-card>strong,.upcoming-card strong{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.stream-card[data-open],.upcoming-card[data-open],.streamer-card[data-url],.character-card[data-character]{cursor:pointer}
+.load-more{display:block;min-height:44px;margin:18px auto 0;padding:0 20px;border:1px solid var(--line);border-radius:8px;background:#151a22;color:#f5f7fa;font-size:13px;font-weight:800;cursor:pointer}
+.load-more:hover{border-color:#566171;background:#1b222d}
+.stream-card:focus-visible,.upcoming-card:focus-visible,.streamer-card:focus-visible,.character-card:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:0!important;animation-duration:0!important;animation-iteration-count:1!important}.stream-card:hover,.upcoming-card:hover,.streamer-card:hover{transform:none}}

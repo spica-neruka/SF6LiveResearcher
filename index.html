@@ -9,156 +9,39 @@
   <link rel="stylesheet" href="./css/style.css" />
   <link rel="stylesheet" href="./css/character-assets.css" />
   <link rel="stylesheet" href="./css/favorites.css" />
+  <link rel="stylesheet" href="./css/interface.css" />
 </head>
 <body>
+  <a class="skip-link" href="#app">コンテンツへスキップ</a>
   <div class="app-shell">
     <aside class="sidebar" aria-label="メインナビゲーション">
-      <div class="brand"><div class="brand-mark">SF</div><div><strong>SF6 LIVE</strong><span>STREAM HUB</span></div></div>
+      <div class="brand"><div class="brand-mark" aria-hidden="true">SF</div><div><strong>SF6 LIVE</strong><span>STREAM HUB</span></div></div>
       <nav>
-        <button class="nav-item active" data-view="home"><span>⌂</span>配信中</button>
-        <button class="nav-item" data-view="upcoming"><span>◷</span>配信予定</button>
-        <button class="nav-item" data-view="streamers"><span>♙</span>配信者</button>
-        <button class="nav-item" data-view="characters"><span>◉</span>キャラクター</button>
-        <button class="nav-item" data-view="favorites"><span>♡</span>お気に入り</button>
-        <button class="nav-item" data-view="notice"><span>♧</span>お知らせ</button>
-        <button class="nav-item" data-view="settings"><span>⚙</span>設定</button>
-        <button class="nav-item" data-view="help"><span>?</span>使い方</button>
+        <button class="nav-item active" data-view="home" type="button"><span aria-hidden="true">⌂</span><span class="nav-label">配信中</span></button>
+        <button class="nav-item" data-view="upcoming" type="button"><span aria-hidden="true">◷</span><span class="nav-label">配信予定</span></button>
+        <button class="nav-item" data-view="streamers" type="button"><span aria-hidden="true">♙</span><span class="nav-label">配信者</span></button>
+        <button class="nav-item" data-view="characters" type="button"><span aria-hidden="true">◉</span><span class="nav-label">キャラクター</span></button>
+        <button class="nav-item" data-view="favorites" type="button"><span aria-hidden="true">♡</span><span class="nav-label">お気に入り</span></button>
+        <button class="nav-item" data-view="notice" type="button"><span aria-hidden="true">♧</span><span class="nav-label">お知らせ</span></button>
+        <button class="nav-item" data-view="settings" type="button"><span aria-hidden="true">⚙</span><span class="nav-label">設定</span></button>
+        <button class="nav-item" data-view="help" type="button"><span aria-hidden="true">?</span><span class="nav-label">使い方</span></button>
+        <button class="nav-item nav-explore" data-view="explore" type="button"><span aria-hidden="true">⌕</span><span class="nav-label">探す</span></button>
       </nav>
     </aside>
     <main class="main-content">
       <header class="topbar">
         <div><p class="eyebrow">STREET FIGHTER 6 · STREAM HUB</p><h1 id="page-title">配信中</h1></div>
-        <div class="top-actions"><div class="timezone" id="jst-clock" aria-label="現在時刻">◷ --:-- JST</div><label class="search"><span>⌕</span><input id="search-input" type="search" placeholder="配信者やキャラを検索" /></label></div>
+        <div class="top-actions">
+          <div class="fetch-meta"><button id="refresh-button" class="refresh-button" type="button">↻ 更新</button><span id="last-fetched">最終取得: —</span></div>
+          <label class="search" for="search-input"><span aria-hidden="true">⌕</span><span class="sr-only" id="search-label">配信を検索</span><input id="search-input" type="search" placeholder="配信者やキャラを検索" aria-describedby="search-hint" autocomplete="off" /></label>
+          <span class="sr-only" id="search-hint">配信者名、タイトル、キャラクター名で絞り込みます</span>
+        </div>
       </header>
-      <div id="app" aria-live="polite"></div>
+      <p id="app-status" class="sr-only" role="status" aria-live="polite"></p>
+      <div id="app" tabindex="-1"></div>
     </main>
   </div>
   <script type="module" src="./js/app.js"></script>
-  <script type="module" src="./js/streamer-category-filter.js"></script>
   <script src="./js/character-images.js"></script>
-  <script>
-    const SF6_API_BASE = window.SF6_API_BASE || 'https://sf6-live-researcher.u-ambers.workers.dev';
-    const FAVORITES_KEY = 'sf6-live-favorites';
-    let favoriteRenderToken = 0;
-
-    function updateJstClock() {
-      const clock = document.querySelector('#jst-clock');
-      if (!clock) return;
-      const now = new Date();
-      const time = new Intl.DateTimeFormat('ja-JP', {
-        timeZone: 'Asia/Tokyo',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      }).format(now);
-      clock.textContent = `◷ ${time} JST`;
-    }
-    updateJstClock();
-    setInterval(updateJstClock, 1000);
-
-    function escapeFavoriteHtml(value) {
-      return String(value ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));
-    }
-
-    function readFavorites() {
-      try {
-        const value = JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]');
-        return Array.isArray(value) ? [...new Set(value.filter(Boolean))] : [];
-      } catch {
-        return [];
-      }
-    }
-
-    function favoriteCategoryLabel(value) {
-      return ({pro_gamer:'プロゲーマー',vtuber:'VTuber',game_streamer:'ゲーム配信者'}[value] || value || '--');
-    }
-
-    function favoriteStatusLabel(item) {
-      if (item.status === 'live') return '<span class="live-badge">LIVE</span>';
-      if (item.status === 'upcoming') return '<span class="favorite-status-badge upcoming">配信予定</span>';
-      return '<span class="favorite-status-badge offline">OFFLINE</span>';
-    }
-
-    function favoriteCard(item) {
-      const safeName = escapeFavoriteHtml(item.name);
-      const target = item.status === 'live' && item.videoId
-        ? `https://www.youtube.com/watch?v=${encodeURIComponent(item.videoId)}`
-        : item.status === 'upcoming' && item.videoId
-          ? `https://www.youtube.com/watch?v=${encodeURIComponent(item.videoId)}`
-          : `https://www.youtube.com/channel/${encodeURIComponent(item.channelId)}`;
-      const liveClass = item.status === 'live' ? ' is-live' : '';
-      const thumbnail = item.thumbnailUrl
-        ? `<img class="channel-icon" src="${escapeFavoriteHtml(item.thumbnailUrl)}" alt="${safeName} のYouTubeチャンネルアイコン" loading="lazy" referrerpolicy="no-referrer">`
-        : '';
-      const secondary = item.status === 'live'
-        ? '<small>現在配信中</small>'
-        : item.status === 'upcoming'
-          ? `<small>${item.scheduledStartTime ? new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'numeric',day:'numeric',weekday:'short',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(item.scheduledStartTime)) : '配信予定'}</small>`
-          : '<small>現在は配信していません</small>';
-      return `<article class="streamer-card${liveClass}" data-favorite-open="${escapeFavoriteHtml(target)}" data-favorite-channel="${escapeFavoriteHtml(item.channelId)}">
-        <div class="channel-avatar-wrap">${thumbnail}${favoriteStatusLabel(item)}</div>
-        <div class="streamer-row"><strong>${safeName}</strong><button class="favorite on" data-favorite-remove="${escapeFavoriteHtml(item.channelId)}" aria-label="お気に入りから削除">♥</button></div>
-        <div class="streamer-stats"><span><b>登録者</b>${item.subscriberCount != null && Number.isFinite(Number(item.subscriberCount)) ? Number(item.subscriberCount).toLocaleString() : '--'}</span><span><b>カテゴリ</b>${escapeFavoriteHtml(favoriteCategoryLabel(item.streamerCategory))}</span></div>
-        ${secondary}
-      </article>`;
-    }
-
-    async function renderFavoritesFromApi() {
-      const token = ++favoriteRenderToken;
-      const app = document.querySelector('#app');
-      const title = document.querySelector('#page-title');
-      if (!app || title?.textContent !== 'お気に入り') return;
-
-      const favoriteIds = readFavorites();
-      if (!favoriteIds.length) {
-        app.innerHTML = `<section class="section"><div class="section-head"><div><h2>お気に入り</h2><p>このブラウザだけに保存されます。アカウントは不要です。</p></div></div><div class="empty">お気に入りの配信者はありません。</div></section>`;
-        return;
-      }
-
-      app.innerHTML = `<section class="section"><div class="section-head"><div><h2>お気に入り</h2><p>配信中でなくても登録した配信者を表示します。</p></div><span class="result-count">${favoriteIds.length} streamers</span></div><div class="streamer-grid"><div class="empty">読み込み中…</div></div></section>`;
-
-      try {
-        const params = new URLSearchParams({ ids: favoriteIds.join(',') });
-        const response = await fetch(`${SF6_API_BASE}/api/favorites?${params.toString()}`, { cache: 'no-store' });
-        if (!response.ok) throw new Error(`favorites API ${response.status}`);
-        const items = await response.json();
-        if (token !== favoriteRenderToken || document.querySelector('#page-title')?.textContent !== 'お気に入り') return;
-
-        const byId = new Map((Array.isArray(items) ? items : []).map(item => [item.channelId, item]));
-        const ordered = favoriteIds.map(id => byId.get(id)).filter(Boolean);
-        const missingCount = favoriteIds.length - ordered.length;
-        const countLabel = missingCount > 0 ? `${ordered.length} streamers` : `${favoriteIds.length} streamers`;
-        const missingNote = missingCount > 0 ? `<p class="favorite-missing-note">登録情報が見つからない配信者 ${missingCount} 件は非表示にしています。</p>` : '';
-        app.innerHTML = `<section class="section"><div class="section-head"><div><h2>お気に入り</h2><p>配信中でなくても登録した配信者を表示します。</p>${missingNote}</div><span class="result-count">${countLabel}</span></div>${ordered.length ? `<div class="streamer-grid">${ordered.map(favoriteCard).join('')}</div>` : '<div class="empty">お気に入りの配信者情報が見つかりません。</div>'}</section>`;
-      } catch (error) {
-        console.error('Failed to render favorites', error);
-        if (token === favoriteRenderToken && document.querySelector('#page-title')?.textContent === 'お気に入り') {
-          app.innerHTML = `<section class="section"><div class="section-head"><div><h2>お気に入り</h2><p>このブラウザだけに保存されます。アカウントは不要です。</p></div></div><div class="empty">お気に入りの読み込みに失敗しました。</div></section>`;
-        }
-      }
-    }
-
-    document.addEventListener('click', event => {
-      const navItem = event.target.closest('.nav-item');
-      if (navItem?.dataset.view === 'favorites') setTimeout(renderFavoritesFromApi, 0);
-
-      const removeButton = event.target.closest('[data-favorite-remove]');
-      if (removeButton) {
-        event.stopPropagation();
-        const channelId = removeButton.dataset.favoriteRemove;
-        const favorites = readFavorites().filter(id => id !== channelId);
-        localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites));
-        renderFavoritesFromApi();
-        return;
-      }
-
-      const favoriteCardElement = event.target.closest('[data-favorite-open]');
-      if (favoriteCardElement) {
-        event.preventDefault();
-        window.open(favoriteCardElement.dataset.favoriteOpen, '_blank', 'noopener');
-      }
-    });
-  </script>
 </body>
 </html>
