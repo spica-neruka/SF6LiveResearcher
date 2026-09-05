@@ -2,6 +2,16 @@
 
 スト6の配信中・配信予定・配信者を探す静的フロントエンドです。
 
+## UI改修 Version 1（試作）
+
+ホームをHero・LIVE NOW・CHARACTERSに整理し、全LIVE一覧とキャラ絞り込みを「探す」に移しました。
+PCは横型ヘッダー、スマホはホーム／探す／お気に入り／スケジュールの下部ナビです。
+実装範囲・検証結果・仮画像の扱いは [UI_REDESIGN_V1.md](docs/UI_REDESIGN_V1.md) を参照してください。
+
+本番APIを使わず操作を確認するには `node scripts/preview-server.mjs` を実行します。
+表示されたローカルURLにはサンプル配信と模擬プレイヤーを表示します。
+新ホームの検証は `node scripts/verify-redesign.mjs` です。
+
 ## 起動とAPI
 
 このフォルダーをHTTPサーバーで配信して `index.html` を開きます。ビルドは不要です。

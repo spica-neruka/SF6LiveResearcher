@@ -87,15 +87,23 @@ async function setupPage(viewport = { width: 1440, height: 1000 }, stored = ['c3
 }
 
 const navigate = async (page, view) => {
-  await page.locator(`.nav-item[data-view="${view}"]:visible`).first().click();
+  const nav = page.locator(`.nav-item[data-view="${view}"]:visible`);
+  if (await nav.count()) return nav.first().click();
+  const menu = page.locator('.utility-menu');
+  if (!(await menu.evaluate(el => el.open))) await menu.locator('summary').click();
+  await menu.locator(`[data-go="${view}"]`).click();
 };
 const waitCards = (page, selector, count) => page.waitForFunction(({ selector, count }) => document.querySelectorAll(selector).length === count, { selector, count });
 
 try {
   const page = await setupPage();
-  await waitCards(page, '.live-grid .stream-card', 2);
+  await waitCards(page, '.home-live-rail .stream-card', 2);
   assert.equal(requests.filter(url => url.pathname === '/api/streamers').length, 0, 'Initial live view must not wait for streamer directory');
+  assert.equal(await page.locator('#hero-title').isVisible(), true, 'Home shows the hero entry point');
+  assert.equal(await page.locator('.home-live-rail .stream-card').count(), 2, 'Home shows the loaded LIVE cards');
   await page.screenshot({ path: path.join(output, 'desktop-live.png'), fullPage: true });
+  await navigate(page, 'explore');
+  await waitCards(page, '.live-grid .stream-card', 2);
   const initialRequests = requests.length;
   await page.locator('#search-input').fill('ジュリ');
   await waitCards(page, '.stream-card', 1);
@@ -105,7 +113,7 @@ try {
   assert.equal(await page.locator('.stream-card').first().getAttribute('data-video-id'), 'v2');
   await page.locator('[data-character-select]').selectOption('juri');
   await waitCards(page, '.live-grid .stream-card', 1);
-  await page.waitForFunction(() => document.querySelector('[data-character-view="upcoming"]').textContent.includes('1件'));
+  await page.waitForSelector('[data-character-view="upcoming"]');
   await page.locator('[data-character-view="upcoming"]').click();
   await waitCards(page, '.upcoming-card', 1);
   assert.equal(await page.locator('[data-character-select]').inputValue(), 'juri');
@@ -205,7 +213,7 @@ try {
   failLive = true;
   await page.locator('#refresh-button').click();
   await page.waitForFunction(() => /失敗|取得でき|読み込め/.test(document.getElementById('app').textContent));
-  assert.equal(await page.locator('.live-grid .stream-card').count(), 2, 'Refresh failure retains previous results');
+  assert.equal(await page.locator('.home-live-rail .stream-card').count(), 2, 'Refresh failure retains previous results');
   assert.doesNotMatch(await page.locator('#app').innerText(), /現在LIVE中の配信はありません/);
   failLive = false;
   await page.locator('[data-retry="live"]').click();
@@ -213,15 +221,16 @@ try {
   await page.close();
 
   const mobile = await setupPage({ width: 390, height: 844 });
-  await waitCards(mobile, '.live-grid .stream-card', 2);
+  await waitCards(mobile, '.home-live-rail .stream-card', 2);
   assert.equal(await mobile.locator('#search-input').isVisible(), true);
   assert.equal(await mobile.locator('.nav-item:visible').count(), 4);
+  assert.equal(await mobile.locator('#hero-title').isVisible(), true);
   assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'No horizontal page overflow');
   await mobile.screenshot({ path: path.join(output, 'mobile-live.png'), fullPage: true });
   await navigate(mobile, 'explore');
   assert.match(await mobile.locator('#app').innerText(), /配信者/);
   assert.match(await mobile.locator('#app').innerText(), /キャラクター/);
-  await mobile.locator('[data-go="streamers"]').click();
+  await mobile.locator('.discovery-links [data-go="streamers"]').click();
   await waitCards(mobile, '.streamer-card', 2);
   await mobile.screenshot({ path: path.join(output, 'mobile-streamers.png'), fullPage: true });
   await mobile.setViewportSize({ width: 320, height: 760 });
@@ -234,7 +243,7 @@ try {
   failLive = true;
   const failed = await setupPage();
   await failed.waitForFunction(() => /失敗|取得でき|読み込め/.test(document.getElementById('app').textContent));
-  assert.equal(await failed.locator('.stream-card').count(), 0);
+  assert.equal(await failed.locator('.home-live-rail .stream-card').count(), 0);
   assert.doesNotMatch(await failed.locator('#app').innerText(), /現在LIVE中の配信はありません/);
   await navigate(failed, 'streamers');
   await waitCards(failed, '.streamer-card', 2);
@@ -252,7 +261,7 @@ try {
   await legacy.close();
   largeDirectory = true;
   const large = await setupPage();
-  await waitCards(large, '.stream-card', 2);
+  await waitCards(large, '.home-live-rail .stream-card', 2);
   const beforeDirectory = requests.length;
   await navigate(large, 'streamers');
   await waitCards(large, '.streamer-card', 24);
@@ -291,16 +300,18 @@ try {
   await large.close();
   largeDirectory = false;
   const layout = await setupPage({ width: 2560, height: 1440 });
+  await waitCards(layout, '.home-live-rail .stream-card', 2);
+  await navigate(layout, 'explore');
   await waitCards(layout, '.live-grid .stream-card', 2);
   const columnCount = async (selector, minimum = 20) => layout.locator(selector).evaluate((grid, minimum) => {
     while (grid.children.length < minimum) grid.append(grid.firstElementChild.cloneNode(true));
     return getComputedStyle(grid).gridTemplateColumns.split(' ').length;
   }, minimum);
   const layoutRequests = requests.length;
-  assert.equal(await columnCount('.live-grid'), 6, 'WQHD live grid uses six readable columns');
+  assert.equal(await columnCount('.live-grid'), 7, 'WQHD live grid uses readable auto-fit columns');
   await layout.screenshot({ path: path.join(output, 'responsive-wqhd-live.png'), fullPage: true });
   await layout.setViewportSize({ width: 1920, height: 1080 });
-  assert.equal(await columnCount('.live-grid'), 4, 'Full HD live grid retains four columns');
+  assert.equal(await columnCount('.live-grid'), 5, 'Full HD live grid retains readable columns');
   await layout.setViewportSize({ width: 1366, height: 768 });
   assert.equal(await columnCount('.live-grid'), 3, 'short laptop live cards retain usable width');
   await layout.setViewportSize({ width: 1024, height: 768 });

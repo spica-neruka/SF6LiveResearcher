@@ -16,7 +16,7 @@ const CHARACTERS = [
 ].map(([name, id]) => ({ name, id }));
 const LIVE_CATEGORIES = { ranked: 'ランクマッチ', custom: '参加型', tournament: '大会', casual: 'カジュアル', training: 'トレーニング', avatar_battle: 'アバターバトル', other: 'その他' };
 const CATEGORIES = { pro_gamer: 'プロゲーマー', vtuber: 'VTuber', game_streamer: 'ゲーム配信者', official: '公式', team_org: 'チーム・団体', event: 'イベント', media: 'メディア' };
-const TITLES = { home: '配信中', zapping: 'ライブ視聴', streamer: '配信者情報', upcoming: '配信予定', streamers: '配信者', characters: 'キャラクター', favorites: 'お気に入り', explore: '探す', notice: 'お知らせ', settings: '設定', help: '使い方' };
+const TITLES = { home: 'ホーム', zapping: 'ライブ視聴', streamer: '配信者情報', upcoming: 'スケジュール', streamers: '配信者', characters: 'キャラクター', favorites: 'お気に入り', explore: '探す', notice: 'お知らせ', settings: '設定', help: '使い方' };
 const $ = selector => document.querySelector(selector);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const normalize = value => String(value ?? '').normalize('NFKC').toLocaleLowerCase().trim();
@@ -162,7 +162,7 @@ async function load(key, { append = false, clear = false } = {}) {
   }
 }
 function ensure(key) { if (!state[key].loaded && !state[key].busy && !state[key].error) void load(key); }
-function query(view = state.view) { return normalize(state.queries[view] || ''); }
+function query(view = state.view) { return normalize(state.queries[view === 'explore' ? 'home' : view] || ''); }
 function matches(item, view = state.view) { return !query(view) || normalize(`${item.name || ''} ${item.channelTitle || ''} ${item.title || ''} ${(item.characters || []).join(' ')}`).includes(query(view)); }
 function filteredStreamers() { return state.streamers.items.filter(item => matches(item)); }
 function matchesCharacter(item, id = state.character) { return id === 'all' || item.characters.some(name => characterId(name) === id); }
@@ -257,7 +257,22 @@ function characterCount(key, id) {
 }
 function characterTabs() {
   if (state.character === 'all') return '';
-  return `<div class="character-tabs" aria-label="選択したキャラクターの配信">${['home', 'upcoming'].map(view => button(`${TITLES[view]} ${characterCount(view === 'home' ? 'live' : 'upcoming', state.character)}件`, `data-character-view="${view}" aria-pressed="${state.view === view}"`, `chip ${state.view === view ? 'active' : ''}`)).join('')}</div>`;
+  return `<div class="character-tabs" aria-label="選択したキャラクターの配信">${['explore', 'upcoming'].map(view => button(`${view === 'explore' ? '配信中' : '配信予定'} ${characterCount(view === 'explore' ? 'live' : 'upcoming', state.character)}件`, `data-character-view="${view}" aria-pressed="${state.view === view}"`, `chip ${state.view === view ? 'active' : ''}`)).join('')}</div>`;
+}
+function homePage() {
+  const items = filteredVideos('live', 'home');
+  const data = state.live;
+  const featured = ['cammy', 'juri', 'ken', 'gouki', 'ryu', 'kimberly', 'jp', 'lily'].map(id => CHARACTERS.find(c => c.id === id));
+  return `<section class="hub-hero" aria-labelledby="hero-title">
+    <div class="hero-copy"><p class="hero-kicker">YOUR NEXT FAVORITE STREAM.</p><h2 id="hero-title"><span>見つかる。</span><span>推せる。</span><span>もっと楽しく。</span></h2><p class="hero-description">SF6の配信をまとめて、<br>好きなファイターの、今を見つけよう。</p><div class="hero-actions">${button('▶ 今すぐ観る <span aria-hidden="true">→</span>', `data-zap-start="${esc(items[0]?.id || '')}" ${items.length ? '' : 'disabled'}`, 'hero-primary')}${button('⌕ 配信者を探す', 'data-go="streamers"', 'hero-secondary')}</div></div>
+    <div class="hero-art" aria-hidden="true"><span class="hero-art-word">GOOD<br>GAMES.<br>MORE<br>PEOPLE!</span><img src="https://www.streetfighter.com/6/buckler/assets/images/material/character/character_juri_l.png" alt="" fetchpriority="high"><span class="hero-stamp">SF6<br>LOVE!</span></div>
+  </section>
+  <section class="home-section home-live" aria-labelledby="home-live-title" aria-busy="${data.busy}"><div class="home-section-head"><div><h2 id="home-live-title">LIVE NOW</h2><p>今すぐ見られるSF6の配信</p></div><div class="home-section-actions"><span>${data.loaded ? `${items.length}${data.hasNext ? '+' : ''} 配信` : '取得中'}</span>${button('すべて見る →', 'data-go="explore"', 'text-button')}</div></div>
+    ${stateNotice('live')}${items.length ? `<div class="home-live-rail">${items.slice(0, 4).map(item => videoCard(item)).join('')}</div>` : `${emptyMessage('live', Boolean(query('home')) || state.character !== 'all' || state.category !== 'all', '配信中の動画')}${data.loaded && !data.busy && !data.error ? `<div class="empty-actions">${button('配信予定を見る', 'data-go="upcoming"')}${button('配信者を探す', 'data-go="streamers"')}</div>` : ''}`}
+    ${query('home') || state.character !== 'all' || state.category !== 'all' ? `<div class="filter-summary">選択中の条件を適用しています ${button('条件をクリア', 'data-reset', 'text-button')}</div>` : ''}
+    ${data.hasNext ? '<p class="home-data-note">件数は取得済みの配信です。すべて見るから続きを取得できます。</p>' : ''}
+  </section>
+  <section class="home-section home-characters" aria-labelledby="home-characters-title"><div class="home-section-head"><div><h2 id="home-characters-title">CHARACTERS</h2><p>キャラクターから探す</p></div>${button('すべて見る →', 'data-go="characters"', 'text-button')}</div><div class="home-character-rail">${featured.map(c => `<button type="button" class="home-character" data-character="${c.id}" aria-label="${esc(c.name)}の配信を探す"><span class="home-character-art" aria-hidden="true" style="background-image:url('https://www.streetfighter.com/6/buckler/assets/images/material/character/character_${c.id}_l.png')"></span><strong>${esc(c.name)}</strong><span class="home-character-count">${characterCount('live', c.id)}</span></button>`).join('')}</div><p class="home-data-note">配信情報に付いたキャラクター別のLIVE件数。現在の使用キャラと異なる場合があります。</p></section>`;
 }
 function videosPage(key) {
   const isLive = key === 'live';
@@ -280,9 +295,16 @@ function captureQueue(id) {
 }
 function writeRoute(replace = false) {
   const url = new URL(location.href);
-  ['view', 'video', 'channel', 'zap_character', 'zap_category', 'zap_sort', 'zap_q'].forEach(key => url.searchParams.delete(key));
+  ['view', 'video', 'channel', 'zap_character', 'zap_category', 'zap_sort', 'zap_q', 'character', 'category', 'sort', 'q'].forEach(key => url.searchParams.delete(key));
   if (state.view !== 'home') url.searchParams.set('view', state.view);
   if (state.view === 'streamer' && state.selectedStreamer) url.searchParams.set('channel', state.selectedStreamer.channelId);
+  if (['home', 'explore', 'upcoming'].includes(state.view)) {
+    if (state.character !== 'all') url.searchParams.set('character', state.character);
+    if (state.category !== 'all') url.searchParams.set('category', state.category);
+    if (state.sort !== 'viewers') url.searchParams.set('sort', state.sort);
+    const q = state.queries[state.view === 'explore' ? 'home' : state.view];
+    if (q) url.searchParams.set('q', q);
+  }
   if (state.view === 'zapping') {
     if (currentZapping()) url.searchParams.set('video', currentZapping().id);
     const filters = state.zapping.filters || {};
@@ -315,7 +337,7 @@ function stepZapping(direction) { selectZapping(state.zapping.index + direction)
 function closeZapping() {
   player.close();
   state.zapping.items = [];
-  if (state.view === 'zapping') navigate('home', { preserveCharacter: true });
+  if (state.view === 'zapping') navigate('explore', { preserveCharacter: true });
   else render();
 }
 function carouselNeighbor(item, direction) {
@@ -384,7 +406,7 @@ function charactersPage() {
   </section>`;
 }
 function explorePage() {
-  return `<section class="section">${sectionHead('見たい配信を探す', '配信者やキャラクターから探せます。')}<div class="explore-grid">${[['streamers', '配信者から探す', '名前・カテゴリ・活動形態で見つける'], ['characters', 'キャラクターから探す', '使いたいキャラクターの配信をチェック'], ['notice', 'お知らせ', 'サイトの更新情報'], ['settings', '設定', 'お気に入りの保存について'], ['help', '使い方', '検索や表示情報について']].map(([view, title, text]) => `<button type="button" class="explore-card" data-go="${view}"><strong>${title}</strong><span>${text}</span><span aria-hidden="true">→</span></button>`).join('')}</div></section>`;
+  return `<div class="discovery-links" aria-label="探し方">${button('配信者から探す', 'data-go="streamers"')}${button('キャラクターから探す', 'data-go="characters"')}</div>${videosPage('live')}`;
 }
 function infoPage() {
   if (state.view === 'settings') return `<section class="page-card reading-page"><header class="reading-header"><p class="eyebrow">PREFERENCES</p><h2>設定</h2><p>この端末でのSF6 LIVEの使い方を管理します。</p></header><div class="setting-row"><div><h3>お気に入り</h3><p>お気に入りはこのブラウザに保存されます。ログインは不要で、別の端末やブラウザとは共有されません。ブラウザのサイトデータを削除すると、お気に入りも消えます。</p></div>${button('お気に入りを確認', 'data-go="favorites"')}</div></section>`;
@@ -400,7 +422,7 @@ function infoPage() {
   return `<section class="page-card reading-page help-page"><header class="reading-header"><p class="eyebrow">GUIDE</p><h2>使い方</h2><p>配信を探して視聴するまでの操作を案内します。</p></header><div class="help-sections">${helpSections.map(([number, title, text]) => `<section><span>${number}</span><div><h3>${title}</h3><p>${text}</p></div></section>`).join('')}</div></section>`;
 }
 function visibleResources() {
-  if (state.view === 'home') return ['live'];
+  if (['home', 'explore'].includes(state.view)) return ['live'];
   if (state.view === 'upcoming') return ['upcoming'];
   if (state.view === 'characters') return ['live', 'upcoming'];
   if (state.view === 'streamers') return ['streamers', 'live', 'upcoming'];
@@ -410,7 +432,7 @@ function visibleResources() {
 function focusKey(element) {
   if (!element || !$('#app').contains(element)) return null;
   if (element.matches('a[href]')) return { key: 'href', value: element.getAttribute('href') };
-  for (const key of ['data-zap-start', 'data-zap-step', 'data-zap-index', 'data-zap-home', 'data-zap-streamer', 'data-zap-resume', 'data-zapping-gesture', 'data-fav', 'data-character-select', 'data-sort', 'data-streamer-category', 'data-affiliation', 'data-live-category', 'data-character-view', 'data-load-more', 'data-retry', 'data-reset']) {
+  for (const key of ['data-zap-start', 'data-zap-step', 'data-zap-index', 'data-zap-home', 'data-zap-streamer', 'data-zap-resume', 'data-zapping-gesture', 'data-fav', 'data-character', 'data-go', 'data-character-select', 'data-sort', 'data-streamer-category', 'data-affiliation', 'data-live-category', 'data-character-view', 'data-load-more', 'data-retry', 'data-reset']) {
     if (element.hasAttribute(key)) return { key, value: element.getAttribute(key) };
   }
   return null;
@@ -424,17 +446,18 @@ function render() {
   }
   if (state.view === 'streamer' && !state.selectedStreamer && state.pendingChannel) state.selectedStreamer = state.live.items.find(item => item.channelId === state.pendingChannel);
   $('#page-title').textContent = TITLES[state.view];
+  document.body.dataset.view = state.view;
   document.querySelectorAll('.nav-item').forEach(item => {
-    const active = item.dataset.view === state.view || (item.dataset.view === 'explore' && ['streamers', 'characters', 'notice', 'settings', 'help'].includes(state.view));
+    const active = item.dataset.view === state.view || (item.dataset.view === 'explore' && ['streamers', 'characters'].includes(state.view));
     item.classList.toggle('active', active);
     if (active) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current');
   });
-  const searchable = ['home', 'upcoming', 'streamers', 'characters', 'favorites'].includes(state.view);
+  const searchable = ['home', 'explore', 'upcoming', 'streamers', 'characters', 'favorites'].includes(state.view);
   $('.top-actions').hidden = ['zapping', 'streamer'].includes(state.view);
   const searchText = state.view === 'streamers' ? '配信者名・チャンネル名を検索' : state.view === 'characters' ? 'キャラクター名を検索' : state.view === 'favorites' ? 'お気に入りの配信者を検索' : '配信者・タイトル・キャラクターを検索';
   $('#search-input').disabled = !searchable;
   $('#search-input').placeholder = searchable ? searchText : '配信中・配信者ページなどで検索できます';
-  $('#search-input').value = state.queries[state.view] || '';
+  $('#search-input').value = state.queries[state.view === 'explore' ? 'home' : state.view] || '';
   $('#search-label').textContent = searchText;
   $('#search-hint').textContent = state.view === 'streamers' ? '取得済みの配信者名・チャンネル名を検索します。検索による追加取得は行いません。' : 'この画面の読み込み済みの一覧を検索します。';
   const keys = visibleResources();
@@ -443,8 +466,8 @@ function render() {
   $('#refresh-button').disabled = !keys.length || keys.some(key => state[key].busy);
   $('#refresh-button').hidden = !keys.length;
   $('#last-fetched').hidden = !keys.length;
-  $('#app').className = ['home', 'upcoming', 'streamers', 'characters', 'favorites'].includes(state.view) ? 'page-layout page-layout--grid' : state.view === 'zapping' ? 'page-layout page-layout--viewing' : 'page-layout page-layout--reading';
-  $('#app').innerHTML = state.view === 'zapping' ? zappingPage() : state.view === 'streamer' ? selectedStreamerPage() : state.view === 'home' ? videosPage('live') : state.view === 'upcoming' ? videosPage('upcoming') : state.view === 'streamers' ? streamersPage() : state.view === 'favorites' ? favoritesPage() : state.view === 'characters' ? charactersPage() : state.view === 'explore' ? explorePage() : infoPage();
+  $('#app').className = state.view === 'home' ? 'page-layout page-layout--home' : ['explore', 'upcoming', 'streamers', 'characters', 'favorites'].includes(state.view) ? 'page-layout page-layout--grid' : state.view === 'zapping' ? 'page-layout page-layout--viewing' : 'page-layout page-layout--reading';
+  $('#app').innerHTML = state.view === 'zapping' ? zappingPage() : state.view === 'streamer' ? selectedStreamerPage() : state.view === 'home' ? homePage() : state.view === 'upcoming' ? videosPage('upcoming') : state.view === 'streamers' ? streamersPage() : state.view === 'favorites' ? favoritesPage() : state.view === 'characters' ? charactersPage() : state.view === 'explore' ? explorePage() : infoPage();
   if (keys.length) $('#app').insertAdjacentHTML('beforeend', '<p class="freshness-note">更新時刻は画面で情報を受け取った時刻です。情報の反映には時間差があり、更新しても最大5分程度は同じ情報が表示される場合があります。</p>');
   if (currentZapping()) void player.show(currentZapping());
   player.layout();
@@ -458,6 +481,7 @@ function navigate(view, { preserveCharacter = false } = {}) {
   if (!TITLES[view]) return;
   if (view === 'zapping') return startZapping(null, true);
   state.view = view;
+  $('.utility-menu').open = false;
   if (!preserveCharacter && !currentZapping()) { state.character = 'all'; state.category = 'all'; }
   writeRoute();
   render();
@@ -466,7 +490,7 @@ function navigate(view, { preserveCharacter = false } = {}) {
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 function resetFilters() {
-  state.queries[state.view] = '';
+  state.queries[state.view === 'explore' ? 'home' : state.view] = '';
   state.character = 'all';
   state.category = 'all';
   if (state.view === 'streamers') {
@@ -476,6 +500,7 @@ function resetFilters() {
     state.streamers.displayLimit = STREAMER_DISPLAY_STEP;
     if (changedServerFilters) return void load('streamers', { clear: true });
   }
+  writeRoute(true);
   render();
 }
 function toggleFavorite(id) {
@@ -491,7 +516,7 @@ function toggleFavorite(id) {
   render();
 }
 document.addEventListener('click', event => {
-  const control = event.target.closest('button, a[data-zap-start], a[data-zap-streamer]');
+  const control = event.target.closest('button, a[data-zap-start], a[data-zap-streamer], a[data-go]');
   if (!control || control.disabled) return;
   if (control.matches('a')) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -502,10 +527,10 @@ document.addEventListener('click', event => {
   if (control.hasAttribute('data-zap-resume')) return startZapping(null, true);
   if (control.hasAttribute('data-zap-step')) return stepZapping(Number(control.dataset.zapStep));
   if (control.hasAttribute('data-zap-index')) return selectZapping(Number(control.dataset.zapIndex));
-  if (control.hasAttribute('data-zap-home')) return navigate('home', { preserveCharacter: true });
+  if (control.hasAttribute('data-zap-home')) return navigate('explore', { preserveCharacter: true });
   if (control.hasAttribute('data-zap-streamer')) { state.selectedStreamer = currentZapping(); return navigate('streamer', { preserveCharacter: true }); }
   if (control.matches('.nav-item')) return navigate(control.dataset.view);
-  if (control.hasAttribute('data-go')) return navigate(control.dataset.go);
+  if (control.hasAttribute('data-go')) return navigate(control.dataset.go, { preserveCharacter: control.dataset.go === 'explore' });
   if (control.hasAttribute('data-fav')) return toggleFavorite(control.dataset.fav);
   if (control.hasAttribute('data-load-more')) {
     const key = control.dataset.loadMore;
@@ -517,20 +542,30 @@ document.addEventListener('click', event => {
   }
   if (control.hasAttribute('data-retry')) return void load(control.dataset.retry, { append: state[control.dataset.retry].append });
   if (control.hasAttribute('data-reset')) return resetFilters();
-  if (control.hasAttribute('data-live-category')) { state.category = control.dataset.liveCategory; render(); }
-  if (control.hasAttribute('data-character')) { state.character = control.dataset.character; state.category = 'all'; state.queries.home = ''; navigate('home', { preserveCharacter: true }); ensure('upcoming'); }
-  if (control.hasAttribute('data-character-view')) { state.queries[control.dataset.characterView] = ''; navigate(control.dataset.characterView, { preserveCharacter: true }); }
+  if (control.hasAttribute('data-live-category')) { state.category = control.dataset.liveCategory; writeRoute(true); render(); }
+  if (control.hasAttribute('data-character')) { state.character = control.dataset.character; state.category = 'all'; state.queries.home = ''; navigate('explore', { preserveCharacter: true }); }
+  if (control.hasAttribute('data-character-view')) { state.queries[control.dataset.characterView === 'explore' ? 'home' : control.dataset.characterView] = ''; navigate(control.dataset.characterView, { preserveCharacter: true }); }
 });
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && $('.utility-menu').open) {
+    $('.utility-menu').open = false;
+    $('.utility-menu summary').focus();
+  }
+});
+document.addEventListener('error', event => {
+  if (event.target instanceof HTMLImageElement && event.target.matches('.hero-art img')) event.target.hidden = true;
+}, true);
 $('#app').addEventListener('change', event => {
   const control = event.target;
-  if (control.hasAttribute('data-character-select')) { state.character = control.value; render(); if (state.character !== 'all') { ensure('live'); ensure('upcoming'); } }
-  if (control.hasAttribute('data-sort')) { state.sort = control.value; void load('live', { clear: true }); }
+  if (control.hasAttribute('data-character-select')) { state.character = control.value; writeRoute(true); render(); }
+  if (control.hasAttribute('data-sort')) { state.sort = control.value; writeRoute(true); void load('live', { clear: true }); }
   if (control.hasAttribute('data-streamer-category')) { state.streamerCategory = control.value; void load('streamers', { clear: true }); }
   if (control.hasAttribute('data-affiliation')) { state.affiliation = control.value; void load('streamers', { clear: true }); }
 });
 $('#search-input').addEventListener('input', event => {
-  state.queries[state.view] = event.target.value;
+  state.queries[state.view === 'explore' ? 'home' : state.view] = event.target.value;
   if (state.view === 'streamers') state.streamers.displayLimit = STREAMER_DISPLAY_STEP;
+  writeRoute(true);
   render();
 });
 $('#refresh-button').addEventListener('click', () => { visibleResources().forEach(key => void load(key)); });
@@ -545,6 +580,12 @@ function readRoute() {
   const params = new URL(location.href).searchParams;
   const view = params.get('view');
   state.view = Object.hasOwn(TITLES, view) ? view : 'home';
+  if (['home', 'explore', 'upcoming'].includes(state.view)) {
+    state.character = CHARACTERS.some(c => c.id === params.get('character')) ? params.get('character') : 'all';
+    state.category = Object.hasOwn(LIVE_CATEGORIES, params.get('category')) ? params.get('category') : 'all';
+    state.sort = params.get('sort') === 'newest' ? 'newest' : 'viewers';
+    state.queries[state.view === 'explore' ? 'home' : state.view] = params.get('q') || '';
+  }
   if (state.view === 'zapping') {
     const character = params.get('zap_character');
     const category = params.get('zap_category');

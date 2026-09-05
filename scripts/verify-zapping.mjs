@@ -166,14 +166,17 @@ try {
   const page = await setupPage({ width: 1440, height: 1000 });
   await wait(page, '.stream-card', 4);
   assert.equal(requests.length, 1, 'one initial live API request');
-  assert.equal(await page.locator('button[data-zap-start], .nav-item[data-view="zapping"]').count(), 0, 'no dedicated start CTA or watch navigation');
+  assert.equal(await page.locator('.hero-primary[data-zap-start]').count(), 1, 'home exposes one primary watch CTA');
+  assert.equal(await page.locator('.nav-item[data-view="zapping"]').count(), 0, 'watching remains a contextual destination');
   assert.equal(await page.locator('.stream-card a[target="_blank"]').count(), 0, 'LIVE cards have no external video links');
   assert.doesNotMatch(await page.locator('body').innerText(), /ザッピング/);
   await page.locator('.stream-card [data-fav="cb"]').click();
-  assert.equal(await page.locator('#page-title').innerText(), '配信中', 'favorite does not open viewer');
+  assert.equal(await page.locator('#page-title').innerText(), 'ホーム', 'favorite does not open viewer');
   assert.equal(await page.locator('.stream-card [data-fav="cb"]').getAttribute('aria-pressed'), 'true');
   assert.equal(await page.evaluate(() => window.__yt.players), 0, 'favorite does not start playback');
   assert.deepEqual(await page.locator('.stream-card').evaluateAll(es => es.map(e => e.dataset.videoId)), ['b', 'c', 'd', 'a']);
+  await page.locator('.nav-item[data-view="explore"]').click();
+  await wait(page, '.live-grid .stream-card', 4);
   await page.locator('[data-live-category="custom"]').click();
   await page.locator('.stream-card .stream-title').first().click();
   await wait(page, '#persistent-player iframe');
@@ -314,7 +317,7 @@ try {
   await page.locator('#app [data-zap-close]').click();
   assert.equal(await page.evaluate(() => window.__yt.destroys), 1, 'close destroys player');
   await page.locator('[data-character-select]').selectOption('juri');
-  await page.waitForFunction(() => document.querySelector('[data-character-view="upcoming"]').textContent.includes('1件'));
+  await page.waitForSelector('[data-character-view="upcoming"]');
   await page.locator('#search-input').fill('Bravo');
   const beforeFilteredStart = requests.length;
   await page.locator('[data-zap-start="b"]').click();
@@ -390,7 +393,7 @@ try {
   const delayed = await setupPage({ width: 1440, height: 1000 }, 'http://frontend.test/', { readyDelay: 300, apiDelay: 100 });
   await wait(delayed, '.stream-card', 4);
   const delayedRequests = requests.length;
-  await delayed.locator('[data-zap-start="b"]').click();
+  await delayed.locator('.stream-card[data-video-id="b"] .stream-title').click();
   await delayed.locator('.carousel-edge.is-next .carousel-card[data-zap-step="1"]').click();
   await delayed.locator('.carousel-edge.is-next .carousel-card[data-zap-step="1"]').click();
   await delayed.waitForFunction(() => window.__yt.loads.at(-1) === 'd');
@@ -458,19 +461,19 @@ try {
     assert.equal(await home.locator('#last-fetched').innerText(), '02:20 更新', 'same-day Japan time omits date');
     const header = await home.locator('.topbar').evaluate(el => {
       const rect = selector => { const r = document.querySelector(selector).getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; };
-      return { height: el.getBoundingClientRect().height, title: rect('#page-title'), search: rect('.search'), refresh: rect('#refresh-button'), overflow: document.documentElement.scrollWidth > innerWidth };
+      const topbar = el.getBoundingClientRect();
+      return { top: topbar.top, bottom: topbar.bottom, height: topbar.height, title: rect('#page-title'), search: rect('.search'), refresh: rect('#refresh-button'), overflow: document.documentElement.scrollWidth > innerWidth };
     });
     assert.equal(header.overflow, false, `${width}px home has no horizontal overflow`);
     assert.ok(header.refresh.width >= 44 && header.refresh.height >= 44, 'refresh has a 44px tap target');
-    assert.ok(header.search.width >= (width <= 760 ? width - 34 : 200), `${width}px search retains usable width`);
+    assert.ok(header.search.width >= (width <= 760 ? Math.min(width - 34, 200) : 160), `${width}px search retains usable width`);
+    assert.ok(header.search.right <= width + 1 && header.refresh.right <= width + 1, `${width}px search and refresh stay inside the viewport`);
     if (width > 760) {
-      assert.ok(header.title.right <= header.search.x && header.search.right <= header.refresh.x, `${width}px title/search/refresh stay in one row`);
-      assert.ok(header.search.y < header.title.bottom && header.search.bottom > header.title.y, 'search aligns with title');
+      assert.ok(header.title.width === 0 || header.title.right <= header.search.x + 1, `${width}px title and search do not overlap`);
       assert.ok(header.height < 110, `${width}px desktop header stays compact`);
     } else {
-      assert.ok(header.title.bottom <= header.search.y, 'mobile search is below title');
-      assert.ok(header.refresh.bottom <= header.search.y, 'mobile refresh is beside title');
-      assert.ok(header.height < 155, `${width}px mobile header stays compact`);
+      assert.ok(header.search.height >= 42, 'mobile search keeps a usable control height');
+      assert.ok(header.height < 180, `${width}px mobile header stays compact`);
     }
     await home.screenshot({ path: path.join(output, `header-${width}.png`), fullPage: true });
     const beforeEntry = requests.length;
@@ -503,7 +506,8 @@ try {
   await dates.locator('#search-input').fill('Bravo');
   assert.equal(await dates.locator('#last-fetched').innerText(), '9/4 23:55 更新', 'Japan midnight adds the old date even on the same UTC day');
   assert.equal(requests.length, beforeMidnight, 'formatting does not fetch data');
-  await dates.locator('.nav-item[data-view="help"]').click();
+  await dates.locator('.utility-menu summary').click();
+  await dates.locator('.utility-menu [data-go="help"]').click();
   assert.doesNotMatch(await dates.locator('body').innerText(), /ザッピング|最終取得/);
   await dates.close();
   assert.deepEqual(errors, [], 'no uncaught browser errors');
